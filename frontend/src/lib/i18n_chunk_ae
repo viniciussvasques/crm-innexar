@@ -1,0 +1,50 @@
+      welcome: '¡Hola! ¿Cómo puedo ayudar?',
+      welcomeMessage: 'Pregúntame sobre estrategias de ventas, análisis de oportunidades o cualquier duda sobre el CRM.',
+      placeholder: 'Escribe tu pregunta...',
+      send: 'Enviar',
+      thinking: 'Pensando...',
+      error: 'Error en el chat con IA',
+      quickPrompts: 'Preguntas Rápidas',
+      capabilities: 'Qué puedo hacer',
+      capability1: 'Analizar oportunidades y leads',
+      capability2: 'Generar propuestas comerciales',
+      capability3: 'Sugerir estrategias de ventas',
+      capability4: 'Ayudar con follow-ups y negociaciones'
+    },
+    templates: {
+      title: 'Plantillas de Documentos',
+      description: 'Genera documentos profesionales usando plantillas inteligentes',
+      useTemplate: 'Usar Plantilla',
+      variables: 'Variables necesarias',
+      generate: 'Generar Documento',
+      fillVariables: 'Complete las variables',
+      generatedDocument: 'Documento Generado',
+      generatedAt: 'Generado en',
+      copy: 'Copiar',
+      download: 'Descargar',
+      proposal: 'Propuesta',
+      contract: 'Contrato',
+      email: 'Email'
+    }
+  }
+}
+
+export function getTranslation(lang: Language, key: string): string {
+  const keys = key.split('.')
+  let value: any = translations[lang]
+  
+  for (const k of keys) {
+    value = value?.[k]
+    if (value === undefined) {
+      // Fallback para português se não encontrar
+      value = translations.pt
+      for (const k2 of keys) {
+        value = value?.[k2]
+      }
+      break
+    }
+  }
+  
+  return value || key
+}
+
