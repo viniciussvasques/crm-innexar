@@ -23,7 +23,7 @@ export default function Layout({ children }: LayoutProps) {
     if (typeof window === 'undefined') return
     const token = localStorage.getItem('token')
     const userStr = localStorage.getItem('user')
-    
+
     if (!token && pathname !== '/login') {
       router.push('/login')
       return
@@ -53,14 +53,16 @@ export default function Layout({ children }: LayoutProps) {
     { name: t('nav.ai'), href: '/ai', icon: '✨' },
     ...(user?.role === 'admin' ? [
       { name: t('nav.analytics'), href: '/analytics', icon: '📈' },
-      { name: t('nav.commissions'), href: '/commissions', icon: '💰' }
+      { name: t('nav.commissions'), href: '/commissions', icon: '💰' },
+      { name: t('nav.siteOrders'), href: '/site-orders', icon: '🌐' }
     ] : []),
     ...(user?.role === 'planejamento' ? [
       { name: t('nav.planning'), href: '/planning', icon: '📋' }
     ] : []),
     ...(user?.role === 'admin' ? [
       { name: t('nav.users'), href: '/users', icon: '👤' },
-      { name: t('nav.aiConfig'), href: '/ai-config', icon: '⚙️' }
+      { name: t('nav.aiConfig'), href: '/ai-config', icon: '🤖' },
+      { name: t('nav.settings'), href: '/settings', icon: '⚙️' }
     ] : [])
   ]
 
@@ -100,11 +102,10 @@ export default function Layout({ children }: LayoutProps) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
                       ? 'bg-primary text-white'
                       : 'text-gray-700 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   <span className="text-xl">{item.icon}</span>
                   <span className="font-medium">{item.name}</span>

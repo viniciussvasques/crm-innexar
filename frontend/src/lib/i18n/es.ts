@@ -13,7 +13,11 @@ export default {
     templates: 'Plantillas',
     reports: 'Informes',
     leaderboard: 'Leaderboard',
-    aiConfig: 'Configuración IA'
+    aiConfig: 'Configuración IA',
+    siteOrders: 'Pedidos de Sitios',
+    settings: 'Configuración',
+    analytics: 'Análisis',
+    planning: 'Planificación'
   },
 
 

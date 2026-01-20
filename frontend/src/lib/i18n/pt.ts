@@ -13,7 +13,11 @@ export default {
     templates: 'Templates',
     reports: 'Relatórios',
     leaderboard: 'Leaderboard',
-    aiConfig: 'Configuração IA'
+    aiConfig: 'Configuração IA',
+    siteOrders: 'Pedidos de Sites',
+    settings: 'Configurações',
+    analytics: 'Analytics',
+    planning: 'Planejamento'
   },
 
 
