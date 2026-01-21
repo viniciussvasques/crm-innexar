@@ -45,3 +45,24 @@ async def get_stripe_enabled(db: AsyncSession = Depends(get_db)) -> Dict[str, bo
     
     enabled = config.get_value() if config else False
     return {"enabled": enabled}
+
+
+@router.get("/stripe/keys")
+async def get_stripe_keys(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Get all Stripe keys for internal server-to-server communication.
+    This endpoint is meant for internal use (Docker network) only.
+    """
+    stripe_keys = [
+        "stripe_secret_key",
+        "stripe_publishable_key",
+        "stripe_webhook_secret",
+    ]
+    
+    result = await db.execute(
+        select(SystemConfig).where(SystemConfig.key.in_(stripe_keys))
+    )
+    configs = result.scalars().all()
+    
+    return {c.key: c.value for c in configs}
+
