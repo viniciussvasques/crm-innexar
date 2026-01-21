@@ -299,13 +299,22 @@ async def submit_onboarding(
     db: AsyncSession = Depends(get_db)
 ):
     """Cliente submete dados do onboarding"""
-    # Try to find order by stripe_session_id first, then by numeric id
+    # Try to find order by exact stripe_session_id match
     result = await db.execute(
         select(SiteOrder).where(SiteOrder.stripe_session_id == order_id)
     )
     order = result.scalar_one_or_none()
     
-    # If not found by stripe_session_id, try as numeric id
+    # If not found, try matching by last 8 chars of stripe_session_id (case insensitive)
+    if not order:
+        result = await db.execute(
+            select(SiteOrder).where(
+                func.upper(func.right(SiteOrder.stripe_session_id, 8)) == order_id.upper()
+            )
+        )
+        order = result.scalar_one_or_none()
+    
+    # If still not found, try as numeric id
     if not order and order_id.isdigit():
         order = await db.get(SiteOrder, int(order_id))
     
