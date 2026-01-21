@@ -111,6 +111,7 @@ class SiteOnboarding(Base):
     
     # ============ STEP 2: Niche & Location ============
     niche = Column(SQLEnum(SiteNiche), nullable=False)
+    custom_niche = Column(String, nullable=True)  # Custom niche when 'other' is selected
     primary_city = Column(String, nullable=False)
     state = Column(String, nullable=False)
     service_areas = Column(JSON, nullable=True)  # ["City 1", "City 2", ...]

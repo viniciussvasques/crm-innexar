@@ -34,19 +34,56 @@ class SiteOrderCreate(BaseModel):
 
 
 class SiteOnboardingCreate(BaseModel):
+    # Step 1: Business Identity
     business_name: str
     business_email: EmailStr
     business_phone: str
     has_whatsapp: bool = False
+    business_address: Optional[str] = None
+    
+    # Step 2: Niche & Location
     niche: SiteNiche
+    custom_niche: Optional[str] = None
     primary_city: str
     state: str
+    service_areas: Optional[List[str]] = None
+    
+    # Step 3: Services
     services: List[str]
     primary_service: str
+    
+    # Step 4: Site Objective & Pages
+    site_objective: Optional[str] = None
+    site_description: Optional[str] = None
+    selected_pages: Optional[List[str]] = None
+    total_pages: Optional[int] = 5
     tone: SiteTone = SiteTone.PROFESSIONAL
     primary_cta: SiteCTA = SiteCTA.CALL
+    cta_text: Optional[str] = None
+    
+    # Step 5: Design & Colors
     primary_color: Optional[str] = None
     secondary_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    reference_sites: Optional[List[str]] = None
+    design_notes: Optional[str] = None
+    
+    # Step 6: Business Details
+    business_hours: Optional[dict] = None
+    social_facebook: Optional[str] = None
+    social_instagram: Optional[str] = None
+    social_linkedin: Optional[str] = None
+    social_youtube: Optional[str] = None
+    
+    # Step 7: Testimonials & About
+    testimonials: Optional[List[dict]] = None
+    google_reviews_link: Optional[str] = None
+    about_owner: Optional[str] = None
+    years_in_business: Optional[int] = None
+    
+    # Metadata
+    is_complete: bool = False
+    completed_steps: int = 0
 
 
 class SiteOrderStatusUpdate(BaseModel):
@@ -271,19 +308,49 @@ async def submit_onboarding(
     
     onboarding = SiteOnboarding(
         order_id=order_id,
+        # Step 1: Business Identity
         business_name=onboarding_data.business_name,
         business_email=onboarding_data.business_email,
         business_phone=onboarding_data.business_phone,
         has_whatsapp=onboarding_data.has_whatsapp,
+        business_address=onboarding_data.business_address,
+        # Step 2: Niche & Location
         niche=onboarding_data.niche,
+        custom_niche=onboarding_data.custom_niche,
         primary_city=onboarding_data.primary_city,
         state=onboarding_data.state,
+        service_areas=onboarding_data.service_areas,
+        # Step 3: Services
         services=onboarding_data.services,
         primary_service=onboarding_data.primary_service,
+        # Step 4: Site Objective & Pages
+        site_objective=onboarding_data.site_objective,
+        site_description=onboarding_data.site_description,
+        selected_pages=onboarding_data.selected_pages,
+        total_pages=onboarding_data.total_pages or 5,
         tone=onboarding_data.tone,
         primary_cta=onboarding_data.primary_cta,
+        cta_text=onboarding_data.cta_text,
+        # Step 5: Design & Colors
         primary_color=onboarding_data.primary_color,
-        secondary_color=onboarding_data.secondary_color
+        secondary_color=onboarding_data.secondary_color,
+        accent_color=onboarding_data.accent_color,
+        reference_sites=onboarding_data.reference_sites,
+        design_notes=onboarding_data.design_notes,
+        # Step 6: Business Details
+        business_hours=onboarding_data.business_hours,
+        social_facebook=onboarding_data.social_facebook,
+        social_instagram=onboarding_data.social_instagram,
+        social_linkedin=onboarding_data.social_linkedin,
+        social_youtube=onboarding_data.social_youtube,
+        # Step 7: Testimonials & About
+        testimonials=onboarding_data.testimonials,
+        google_reviews_link=onboarding_data.google_reviews_link,
+        about_owner=onboarding_data.about_owner,
+        years_in_business=onboarding_data.years_in_business,
+        # Metadata
+        is_complete=onboarding_data.is_complete,
+        completed_steps=onboarding_data.completed_steps,
     )
     
     db.add(onboarding)
