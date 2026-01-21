@@ -294,12 +294,21 @@ async def update_order_status(
 
 @router.post("/{order_id}/onboarding")
 async def submit_onboarding(
-    order_id: int,
+    order_id: str,
     onboarding_data: SiteOnboardingCreate,
     db: AsyncSession = Depends(get_db)
 ):
     """Cliente submete dados do onboarding"""
-    order = await db.get(SiteOrder, order_id)
+    # Try to find order by stripe_session_id first, then by numeric id
+    result = await db.execute(
+        select(SiteOrder).where(SiteOrder.stripe_session_id == order_id)
+    )
+    order = result.scalar_one_or_none()
+    
+    # If not found by stripe_session_id, try as numeric id
+    if not order and order_id.isdigit():
+        order = await db.get(SiteOrder, int(order_id))
+    
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
@@ -307,7 +316,7 @@ async def submit_onboarding(
         raise HTTPException(status_code=400, detail="Onboarding already completed")
     
     onboarding = SiteOnboarding(
-        order_id=order_id,
+        order_id=order.id,
         # Step 1: Business Identity
         business_name=onboarding_data.business_name,
         business_email=onboarding_data.business_email,
