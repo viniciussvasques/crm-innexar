@@ -237,3 +237,44 @@ async def get_email_config(db: AsyncSession) -> Dict[str, Any]:
     configs = result.scalars().all()
     
     return {c.key: c.get_value() for c in configs}
+
+
+# ============== Public endpoint for external sites ==============
+
+class PublicConfigResponse(BaseModel):
+    key: str
+    value: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+
+@router.get("/public")
+async def get_public_configs(
+    db: AsyncSession = Depends(get_db)
+) -> List[PublicConfigResponse]:
+    """
+    Get Stripe configuration for external sites.
+    This endpoint returns only the necessary keys for Stripe integration.
+    No authentication required but only returns specific keys.
+    """
+    allowed_keys = [
+        "stripe_secret_key",
+        "stripe_publishable_key", 
+        "stripe_webhook_secret",
+        "site_base_price",
+        "site_delivery_days",
+    ]
+    
+    result = await db.execute(
+        select(SystemConfig).where(SystemConfig.key.in_(allowed_keys))
+    )
+    configs = result.scalars().all()
+    
+    return [
+        PublicConfigResponse(
+            key=c.key,
+            value=c.value  # Return actual value for these specific keys
+        )
+        for c in configs
+    ]
