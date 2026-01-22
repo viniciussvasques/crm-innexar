@@ -155,6 +155,20 @@ class EmailService:
             html_content=html,
         )
 
+    def send_custom_email(self, to_email: str, subject: str, template_data: dict, template_name: str) -> bool:
+        """Send a custom email with template name lookup."""
+        templates = {
+            "verification": VERIFICATION_TEMPLATE,
+        }
+        
+        template_str = templates.get(template_name)
+        if not template_str:
+            print(f"Unknown template: {template_name}")
+            return False
+        
+        html = self.render_template(template_str, template_data)
+        return self.send_email(to_email=to_email, subject=subject, html_content=html)
+
 
 # ========== EMAIL TEMPLATES ==========
 
@@ -485,6 +499,55 @@ SITE_DELIVERED_TEMPLATE = """
 </html>
 """
 
+VERIFICATION_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    """ + BASE_STYLES + """
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Verifique seu Email ✉️</h1>
+        <p>Acesse seu Portal de Cliente Innexar</p>
+    </div>
+    <div class="content">
+        <div style="text-align: center;">
+            <div class="icon-circle" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);">🔐</div>
+        </div>
+
+        <h2>Olá {{ customer_name }}!</h2>
+        <p>Seu site está sendo desenvolvido! Para acompanhar o progresso, verifique seu email clicando no botão abaixo.</p>
+
+        <div class="card">
+            <h3>🔑 Suas Credenciais de Acesso</h3>
+            <p><strong>Email:</strong> O email que você usou para comprar</p>
+            <p><strong>Senha Temporária:</strong> <code style="background: rgba(59,130,246,0.2); padding: 4px 12px; border-radius: 6px; font-family: monospace; color: #3b82f6;">{{ temp_password }}</code></p>
+            <p style="font-size: 14px; color: #64748b; margin-top: 15px;">⚠️ Guarde esta senha! Você pode alterá-la após o login.</p>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{ verification_url }}" class="button" style="font-size: 18px; padding: 18px 36px;">Verificar Email e Acessar →</a>
+        </div>
+
+        <div class="divider"></div>
+
+        <p style="text-align: center; color: #64748b; font-size: 14px;">
+            Se você não solicitou isso, ignore este email.
+        </p>
+    </div>
+    <div class="footer">
+        <p>© 2026 Innexar. Construindo sites profissionais para negócios locais.</p>
+        <p><a href="https://innexar.app">innexar.app</a></p>
+    </div>
+</div>
+</body>
+</html>
+"""
+
 
 # Singleton instance
 email_service = EmailService()
+

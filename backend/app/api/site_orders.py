@@ -16,6 +16,7 @@ from app.models.site_order import (
     SiteOrderAddon, SiteTemplate, SiteNiche, SiteTone, SiteCTA
 )
 from app.api.dependencies import get_current_user, require_admin
+from app.api.site_customers import create_customer_account
 
 
 router = APIRouter(prefix="/site-orders", tags=["site-orders"])
@@ -408,9 +409,28 @@ async def submit_onboarding(
     order.onboarding_completed_at = datetime.utcnow()
     order.expected_delivery_date = datetime.utcnow() + timedelta(days=order.delivery_days)
     
+    # Create customer account for portal access
+    temp_password = None
+    verification_token = None
+    try:
+        customer, temp_password = await create_customer_account(
+            db=db,
+            order_id=order.id,
+            email=order.customer_email
+        )
+        verification_token = customer.verification_token
+    except HTTPException:
+        # Account already exists, skip
+        pass
+    
     await db.commit()
     
-    return {"message": "Onboarding submitted successfully", "order_id": order_id}
+    return {
+        "message": "Onboarding submitted successfully", 
+        "order_id": order_id,
+        "account_created": temp_password is not None,
+        "verification_token": verification_token  # Will be used to send verification email
+    }
 
 
 @router.get("/{order_id}/onboarding")

@@ -113,3 +113,34 @@ async def send_onboarding_complete_email(
     success = email_service.send_onboarding_complete(order_dict)
 
     return {"success": success}
+
+
+class VerificationEmailRequest(BaseModel):
+    """Request body for verification email."""
+    email: str
+    verification_token: str
+    temp_password: str
+    order_id: int
+    customer_name: str
+
+
+@router.post("/send-verification")
+async def send_verification_email(
+    request: VerificationEmailRequest,
+):
+    """Send email verification with portal credentials."""
+    verification_url = f"https://innexar.app/dashboard/verify?token={request.verification_token}"
+    
+    success = email_service.send_custom_email(
+        to_email=request.email,
+        subject="Verifique seu email - Innexar Portal",
+        template_data={
+            "customer_name": request.customer_name,
+            "verification_url": verification_url,
+            "temp_password": request.temp_password,
+            "login_url": "https://innexar.app/dashboard/login",
+        },
+        template_name="verification"
+    )
+    
+    return {"success": success}

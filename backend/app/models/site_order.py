@@ -93,6 +93,7 @@ class SiteOrder(Base):
     # Relationships
     onboarding = relationship("SiteOnboarding", back_populates="order", uselist=False)
     addons = relationship("SiteOrderAddon", back_populates="order")
+    customer = relationship("SiteCustomer", back_populates="order", uselist=False)
 
 
 class SiteOnboarding(Base):
