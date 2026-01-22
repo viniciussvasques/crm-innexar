@@ -9,15 +9,128 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.ai_config import AIConfig, AIModelStatus
 from app.models.chat_session import ChatSession, ChatMessage
+from app.models.contact import Contact
 from app.api.ai import call_ai_api, get_active_ai_config
 from app.api.helena_prompts import get_helena_prompt
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import json
 import uuid
+import re
 from datetime import datetime
 
 router = APIRouter(tags=["ai-public"])
+
+
+# === FUNÇÕES AUXILIARES PARA CAPTURA DE LEADS ===
+
+async def extract_lead_from_conversation(session_id: str, db: AsyncSession) -> Optional[Dict[str, str]]:
+    """Extrai nome e email das mensagens do usuário na conversa."""
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id, ChatMessage.role == "user")
+        .order_by(ChatMessage.timestamp)
+    )
+    user_messages = result.scalars().all()
+    
+    # Juntar todas as mensagens do usuário
+    full_text = " ".join([msg.content for msg in user_messages])
+    
+    # Regex para email
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    email_match = re.search(email_pattern, full_text)
+    
+    if not email_match:
+        return None
+    
+    email = email_match.group()
+    
+    # Tentar extrair nome (palavras antes do email ou padrões comuns)
+    name = None
+    
+    # Padrão: "meu nome é X" ou "sou X" ou "me chamo X"
+    name_patterns = [
+        r'(?:meu nome é|me chamo|sou o|sou a|sou)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)',
+        r'(?:my name is|i am|i\'m)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+        r'(?:mi nombre es|soy)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)',
+    ]
+    
+    for pattern in name_patterns:
+        match = re.search(pattern, full_text, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip().title()
+            break
+    
+    # Se não encontrou padrão, pegar primeira palavra capitalizada antes do email
+    if not name:
+        # Procurar por nomes próprios (palavras com primeira letra maiúscula)
+        words = full_text.split()
+        for i, word in enumerate(words):
+            clean_word = re.sub(r'[^A-Za-zÀ-ÿ]', '', word)
+            if clean_word and clean_word[0].isupper() and len(clean_word) > 2:
+                # Verificar se não é início de frase comum
+                if clean_word.lower() not in ['olá', 'ola', 'oi', 'bom', 'boa', 'quero', 'preciso', 'hello', 'hi']:
+                    name = clean_word
+                    # Tentar pegar sobrenome
+                    if i + 1 < len(words):
+                        next_word = re.sub(r'[^A-Za-zÀ-ÿ]', '', words[i + 1])
+                        if next_word and next_word[0].isupper():
+                            name = f"{clean_word} {next_word}"
+                    break
+    
+    return {"name": name or "Lead do Chat", "email": email}
+
+
+async def create_lead_from_chat(lead_data: Dict[str, str], session: ChatSession, db: AsyncSession):
+    """Cria contato no CRM a partir dos dados extraídos."""
+    try:
+        # Verificar se email já existe
+        existing = await db.execute(
+            select(Contact).where(Contact.email == lead_data["email"]).limit(1)
+        )
+        existing_contact = existing.scalar_one_or_none()
+        
+        if existing_contact:
+            # Atualizar notas
+            existing_contact.notes = (existing_contact.notes or "") + f"\n\n--- Nova conversa Helena ({datetime.utcnow().isoformat()}) ---\nSessão: {session.id}"
+            session.lead_captured = True
+            session.contact_id = existing_contact.id
+            await db.commit()
+            return existing_contact
+        
+        # Buscar admin para atribuir
+        admin_result = await db.execute(
+            select(User).where(User.role == "admin", User.is_active == True).limit(1)
+        )
+        admin = admin_result.scalar_one_or_none()
+        
+        if not admin:
+            return None
+        
+        # Criar novo contato
+        new_contact = Contact(
+            name=lead_data["name"],
+            email=lead_data["email"],
+            status="lead",
+            source="helena_chat",
+            notes=f"Lead capturado automaticamente via chat com Helena.\nSessão: {session.id}",
+            owner_id=admin.id
+        )
+        
+        db.add(new_contact)
+        await db.flush()
+        
+        # Marcar sessão como lead capturado
+        session.lead_captured = True
+        session.contact_id = new_contact.id
+        
+        await db.commit()
+        return new_contact
+        
+    except Exception as e:
+        print(f"Erro ao criar lead: {e}")
+        return None
+
 
 class PublicAIRequest(BaseModel):
     message: str
@@ -311,6 +424,13 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
             db.add(assistant_message)
             
             await db.commit()
+            
+            # === CAPTURA AUTOMÁTICA DE LEADS ===
+            # Verificar se já capturou lead nesta sessão
+            if not session.lead_captured:
+                lead_data = await extract_lead_from_conversation(session.id, db)
+                if lead_data and lead_data.get("email"):
+                    await create_lead_from_chat(lead_data, session, db)
             
             return {
                 "response": response,
