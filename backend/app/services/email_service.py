@@ -278,7 +278,7 @@ class EmailService:
 
     def send_verification_email(self, customer_name: str, to_email: str, temp_password: str, verification_token: str) -> bool:
         """Send email to verify customer account with temporary password."""
-        verification_url = f"https://innexar.app/en/launch/verify?token={verification_token}"
+        verification_url = f"https://innexar.app/en/launch/verify-email?token={verification_token}"
         context = {
             "customer_name": customer_name,
             "temp_password": temp_password,
