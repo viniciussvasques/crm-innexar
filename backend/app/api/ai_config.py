@@ -611,17 +611,33 @@ async def _test_provider_connection(config: AIConfig) -> Dict[str, Any]:
             if not config.api_key:
                 return {"success": False, "error": "API Token é necessário"}
             
+            # Clean up base_url and model_name to avoid double slashes
+            base_url = config.base_url.rstrip('/')
+            model_name = config.model_name.lstrip('/')
+            full_url = f"{base_url}/{model_name}"
+            
+            # For instruct models, use messages format; for others use prompt
+            is_instruct_model = 'instruct' in model_name.lower()
+            
+            if is_instruct_model:
+                request_body = {
+                    "messages": [{"role": "user", "content": test_prompt}],
+                    "max_tokens": 10
+                }
+            else:
+                request_body = {
+                    "prompt": test_prompt,
+                    "max_tokens": 10
+                }
+            
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{config.base_url}/{config.model_name}",
+                    full_url,
                     headers={
                         "Authorization": f"Bearer {config.api_key}",
                         "Content-Type": "application/json"
                     },
-                    json={
-                        "messages": [{"role": "user", "content": test_prompt}],
-                        "max_tokens": 10
-                    },
+                    json=request_body,
                     timeout=15.0
                 )
                 if response.status_code == 200:

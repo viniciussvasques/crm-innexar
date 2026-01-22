@@ -407,17 +407,35 @@ async def _call_cloudflare_api(prompt: str, max_tokens: int, config: AIConfig) -
         raise HTTPException(status_code=500, detail="API Token do Cloudflare não configurado")
     
     try:
+        # Clean up base_url and model_name to avoid double slashes
+        base_url = config.base_url.rstrip('/')
+        model_name = config.model_name.lstrip('/')
+        
+        # Build the full URL
+        full_url = f"{base_url}/{model_name}"
+        
+        # For instruct models, use messages format; for others use prompt
+        is_instruct_model = 'instruct' in model_name.lower()
+        
+        if is_instruct_model:
+            request_body = {
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens
+            }
+        else:
+            request_body = {
+                "prompt": prompt,
+                "max_tokens": max_tokens
+            }
+        
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{config.base_url}/{config.model_name}",
+                full_url,
                 headers={
                     "Authorization": f"Bearer {config.api_key}",
                     "Content-Type": "application/json"
                 },
-                json={
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens
-                },
+                json=request_body,
                 timeout=60.0
             )
             
