@@ -155,6 +155,37 @@ class EmailService:
             html_content=html,
         )
 
+    def send_verification_email(self, customer_name: str, to_email: str, temp_password: str, verification_token: str) -> bool:
+        """Send email to verify customer account with temporary password."""
+        verification_url = f"https://innexar.app/en/launch/verify?token={verification_token}"
+        context = {
+            "customer_name": customer_name,
+            "temp_password": temp_password,
+            "verification_url": verification_url
+        }
+        
+        html = self.render_template(VERIFICATION_TEMPLATE, context)
+        return self.send_email(
+            to_email=to_email,
+            subject="🔐 Verifique seu Email - Portal Innexar",
+            html_content=html
+        )
+
+    def send_password_reset_email(self, customer_name: str, to_email: str, reset_token: str) -> bool:
+        """Send email to reset password."""
+        reset_url = f"https://innexar.app/en/launch/reset-password?token={reset_token}"
+        context = {
+            "customer_name": customer_name,
+            "reset_url": reset_url
+        }
+        
+        html = self.render_template(PASSWORD_RESET_TEMPLATE, context)
+        return self.send_email(
+            to_email=to_email,
+            subject="🔑 Redefinir sua Senha - Portal Innexar",
+            html_content=html
+        )
+
     def send_custom_email(self, to_email: str, subject: str, template_data: dict, template_name: str) -> bool:
         """Send a custom email with template name lookup."""
         templates = {
@@ -547,7 +578,54 @@ VERIFICATION_TEMPLATE = """
 </html>
 """
 
+PASSWORD_RESET_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    """ + BASE_STYLES + """
+</head>
+<body>
+<div class="container">
+    <div class="header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+        <h1>Redefinir Senha 🔑</h1>
+        <p>Solicitação de recuperação de senha</p>
+    </div>
+    <div class="content">
+        <div style="text-align: center;">
+            <div class="icon-circle" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">🔒</div>
+        </div>
+
+        <h2>Olá {{ customer_name }}!</h2>
+        <p>Recebemos uma solicitação para redefinir a senha da sua conta no Portal Innexar.</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{ reset_url }}" class="button" style="font-size: 18px; padding: 18px 36px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">Redefinir Minha Senha →</a>
+        </div>
+
+        <div class="card">
+            <h3>⏰ Link válido por 1 hora</h3>
+            <p style="margin: 0;">Por segurança, este link expira em 1 hora. Se você não solicitou a redefinição de senha, ignore este email.</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <p style="text-align: center; color: #64748b; font-size: 14px;">
+            Se você não solicitou isso, sua conta está segura. Nenhuma ação é necessária.
+        </p>
+    </div>
+    <div class="footer">
+        <p>© 2026 Innexar. Construindo sites profissionais para negócios locais.</p>
+        <p><a href="https://innexar.app">innexar.app</a></p>
+    </div>
+</div>
+</body>
+</html>
+"""
+
 
 # Singleton instance
 email_service = EmailService()
+
 

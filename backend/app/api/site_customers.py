@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.site_customer import SiteCustomer
 from app.models.site_order import SiteOrder
+from app.services.email_service import email_service
 
 router = APIRouter(prefix="/site-customers", tags=["site-customers"])
 
@@ -168,34 +169,6 @@ async def get_current_customer(
     return customer
 
 
-@router.post("/forgot-password")
-async def forgot_password(
-    email: EmailStr,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
-):
-    """Request password reset"""
-    result = await db.execute(
-        select(SiteCustomer).where(SiteCustomer.email == email.lower())
-    )
-    customer = result.scalar_one_or_none()
-    
-    # Always return success to prevent email enumeration
-    if not customer:
-        return {"message": "If an account exists with this email, a reset link will be sent."}
-    
-    # Generate reset token
-    reset_token = SiteCustomer.generate_verification_token()
-    customer.reset_token = reset_token
-    customer.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
-    await db.commit()
-    
-    # TODO: Send password reset email
-    # background_tasks.add_task(send_password_reset_email, customer.email, reset_token)
-    
-    return {"message": "If an account exists with this email, a reset link will be sent."}
-
-
 @router.post("/reset-password")
 async def reset_password(
     data: PasswordReset,
@@ -219,6 +192,97 @@ async def reset_password(
     await db.commit()
     
     return {"message": "Password reset successfully. You can now login."}
+
+
+@router.get("/check-email")
+async def check_email_exists(
+    email: EmailStr,
+    db: AsyncSession = Depends(get_db)
+):
+    """Verifica se um email já está cadastrado no portal"""
+    result = await db.execute(
+        select(SiteCustomer).where(SiteCustomer.email == email.lower())
+    )
+    customer = result.scalar_one_or_none()
+    return {"exists": customer is not None}
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    email: EmailStr,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """Request password reset and send email"""
+    result = await db.execute(
+        select(SiteCustomer).options(selectinload(SiteCustomer.order)).where(SiteCustomer.email == email.lower())
+    )
+    customer = result.scalar_one_or_none()
+    
+    # Always return success to prevent email enumeration
+    if not customer:
+        return {"message": "If an account exists with this email, a reset link will be sent."}
+    
+    # Generate reset token
+    reset_token = SiteCustomer.generate_verification_token()
+    customer.reset_token = reset_token
+    customer.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+    await db.commit()
+    
+    # Send password reset email
+    customer_name = customer.order.customer_name if customer.order else "Cliente"
+    background_tasks.add_task(
+        email_service.send_password_reset_email,
+        customer_name=customer_name,
+        to_email=customer.email,
+        reset_token=reset_token
+    )
+    
+    return {"message": "If an account exists with this email, a reset link will be sent."}
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    email: EmailStr,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """Reenviar email de verificação"""
+    result = await db.execute(
+        select(SiteCustomer).options(selectinload(SiteCustomer.order)).where(SiteCustomer.email == email.lower())
+    )
+    customer = result.scalar_one_or_none()
+    
+    if not customer:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    if customer.email_verified:
+        return {"message": "Email already verified"}
+    
+    # Check if a verification was sent recently (debounce)
+    if customer.verification_sent_at and (datetime.utcnow() - customer.verification_sent_at).seconds < 60:
+         raise HTTPException(status_code=429, detail="Please wait a minute before requesting another email")
+
+    # Generate new token and temp password if needed
+    verification_token = SiteCustomer.generate_verification_token()
+    customer.verification_token = verification_token
+    customer.verification_sent_at = datetime.utcnow()
+    
+    # We don't change the password here by default, but we could generate a new temp one if they lost it
+    temp_password = "sua senha cadastrada" # Generic message as we don't store plain text
+    
+    await db.commit()
+    
+    customer_name = customer.order.customer_name if customer.order else "Cliente"
+    background_tasks.add_task(
+        email_service.send_verification_email,
+        customer_name=customer_name,
+        to_email=customer.email,
+        temp_password=temp_password,
+        verification_token=verification_token
+    )
+    
+    return {"message": "Verification email resent"}
 
 
 # ============== Internal Functions (called from onboarding) ==============

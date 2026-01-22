@@ -1,10 +1,11 @@
 """
 Site Orders API - Gerenciamento de pedidos de sites Launch
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -17,6 +18,7 @@ from app.models.site_order import (
 )
 from app.api.dependencies import get_current_user, require_admin
 from app.api.site_customers import create_customer_account
+from app.services.email_service import email_service
 
 
 router = APIRouter(prefix="/site-orders", tags=["site-orders"])
@@ -330,6 +332,7 @@ async def update_order_status(
 async def submit_onboarding(
     order_id: str,
     onboarding_data: SiteOnboardingCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """Cliente submete dados do onboarding"""
@@ -423,17 +426,38 @@ async def submit_onboarding(
             password=onboarding_data.password
         )
         verification_token = customer.verification_token
-    except HTTPException:
-        # Account already exists, skip
-        pass
-    
+        
+        # Send verification email in background
+        background_tasks.add_task(
+            email_service.send_verification_email,
+            customer_name=order.customer_name,
+            to_email=customer.email,
+            temp_password=temp_password,
+            verification_token=verification_token
+        )
+    except HTTPException as e:
+        # If the specific error is that customer exists for this order, we can ignore if it's a re-submission
+        if e.status_code != 400 or "already exists" not in str(e.detail):
+             raise e
+    except IntegrityError as e:
+        # Handle duplicate email (if someone uses an email already taken by another account)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "EMAIL_ALREADY_EXISTS",
+                "message": "Este e-mail já está cadastrado. Por favor, faça login para continuar.",
+                "field": "email"
+            }
+        )
+
     await db.commit()
     
     return {
         "message": "Onboarding submitted successfully", 
         "order_id": order_id,
         "account_created": temp_password is not None,
-        "verification_token": verification_token  # Will be used to send verification email
+        "verification_token": verification_token
     }
 
 
