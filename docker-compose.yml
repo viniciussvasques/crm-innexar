@@ -38,9 +38,7 @@ services:
       retries: 5
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ghcr.io/viniciussvasques/crm-innexar/backend:latest
     container_name: crm-backend
     restart: unless-stopped
     depends_on:
@@ -54,8 +52,6 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://sales.innexar.app,https://www.sales.innexar.app}
       GROK_API_KEY: ${GROK_API_KEY:-}
-    volumes:
-      - ./backend:/app
     networks:
       - fixelo_fixelo-network
     labels:
@@ -76,9 +72,7 @@ services:
       - "traefik.docker.network=fixelo_fixelo-network"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ghcr.io/viniciussvasques/crm-innexar/frontend:latest
     container_name: crm-frontend
     restart: unless-stopped
     depends_on:
@@ -86,10 +80,6 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.sales.innexar.app}
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     networks:
       - fixelo_fixelo-network
     labels:
