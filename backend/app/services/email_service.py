@@ -9,28 +9,117 @@ from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from jinja2 import Environment, BaseLoader
 
-# Email configuration (from SystemConfig in production)
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "team@innexar.com")
-FROM_NAME = os.getenv("FROM_NAME", "Innexar")
+# Default email configuration (fallback if database not available)
+DEFAULT_SMTP_HOST = "smtp.gmail.com"
+DEFAULT_SMTP_PORT = 587
+DEFAULT_SMTP_USER = ""
+DEFAULT_SMTP_PASSWORD = ""
+DEFAULT_FROM_EMAIL = "team@innexar.com"
+DEFAULT_FROM_NAME = "Innexar"
+
+
+def load_smtp_config_from_db():
+    """Load SMTP configuration from database."""
+    try:
+        from sqlalchemy import create_engine, text
+        from app.core.config import settings
+        
+        engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""))
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT key, value FROM system_configs WHERE key IN "
+                "('smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name')"
+            ))
+            config = {row[0]: row[1] for row in result}
+            return {
+                'smtp_host': config.get('smtp_host', DEFAULT_SMTP_HOST),
+                'smtp_port': int(config.get('smtp_port', DEFAULT_SMTP_PORT)),
+                'smtp_user': config.get('smtp_user', DEFAULT_SMTP_USER),
+                'smtp_password': config.get('smtp_password', DEFAULT_SMTP_PASSWORD),
+                'from_email': config.get('smtp_from_email', DEFAULT_FROM_EMAIL),
+                'from_name': config.get('smtp_from_name', DEFAULT_FROM_NAME),
+            }
+    except Exception as e:
+        print(f"Warning: Could not load SMTP config from database: {e}")
+        return None
 
 
 class EmailService:
     """Handles sending transactional emails for site orders."""
+    
+    _db_config_loaded = False
+    _db_config = None
 
     def __init__(self, smtp_host: str = None, smtp_port: int = None,
                  smtp_user: str = None, smtp_password: str = None,
                  from_email: str = None, from_name: str = None):
-        self.smtp_host = smtp_host or SMTP_HOST
-        self.smtp_port = smtp_port or SMTP_PORT
-        self.smtp_user = smtp_user or SMTP_USER
-        self.smtp_password = smtp_password or SMTP_PASSWORD
-        self.from_email = from_email or FROM_EMAIL
-        self.from_name = from_name or FROM_NAME
+        self._smtp_host = smtp_host
+        self._smtp_port = smtp_port
+        self._smtp_user = smtp_user
+        self._smtp_password = smtp_password
+        self._from_email = from_email
+        self._from_name = from_name
         self.jinja_env = Environment(loader=BaseLoader())
+
+    def _ensure_config_loaded(self):
+        """Lazy load config from database on first use."""
+        if not EmailService._db_config_loaded:
+            EmailService._db_config = load_smtp_config_from_db()
+            EmailService._db_config_loaded = True
+    
+    @property
+    def smtp_host(self):
+        self._ensure_config_loaded()
+        if self._smtp_host:
+            return self._smtp_host
+        if EmailService._db_config:
+            return EmailService._db_config['smtp_host']
+        return os.getenv("SMTP_HOST", DEFAULT_SMTP_HOST)
+    
+    @property
+    def smtp_port(self):
+        self._ensure_config_loaded()
+        if self._smtp_port:
+            return self._smtp_port
+        if EmailService._db_config:
+            return EmailService._db_config['smtp_port']
+        return int(os.getenv("SMTP_PORT", DEFAULT_SMTP_PORT))
+    
+    @property
+    def smtp_user(self):
+        self._ensure_config_loaded()
+        if self._smtp_user:
+            return self._smtp_user
+        if EmailService._db_config:
+            return EmailService._db_config['smtp_user']
+        return os.getenv("SMTP_USER", DEFAULT_SMTP_USER)
+    
+    @property
+    def smtp_password(self):
+        self._ensure_config_loaded()
+        if self._smtp_password:
+            return self._smtp_password
+        if EmailService._db_config:
+            return EmailService._db_config['smtp_password']
+        return os.getenv("SMTP_PASSWORD", DEFAULT_SMTP_PASSWORD)
+    
+    @property
+    def from_email(self):
+        self._ensure_config_loaded()
+        if self._from_email:
+            return self._from_email
+        if EmailService._db_config:
+            return EmailService._db_config['from_email']
+        return os.getenv("FROM_EMAIL", DEFAULT_FROM_EMAIL)
+    
+    @property
+    def from_name(self):
+        self._ensure_config_loaded()
+        if self._from_name:
+            return self._from_name
+        if EmailService._db_config:
+            return EmailService._db_config['from_name']
+        return os.getenv("FROM_NAME", DEFAULT_FROM_NAME)
 
     def send_email(self, to_email: str, subject: str, html_content: str,
                    text_content: Optional[str] = None) -> bool:
@@ -49,12 +138,14 @@ class EmailService:
             msg.attach(MIMEText(html_content, "html"))
 
             # Send via SMTP
+            print(f"Sending email via {self.smtp_host}:{self.smtp_port} as {self.smtp_user}")
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.starttls()
                 if self.smtp_user and self.smtp_password:
                     server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
 
+            print(f"Email sent successfully to {to_email}")
             return True
         except Exception as e:
             print(f"Failed to send email: {e}")
