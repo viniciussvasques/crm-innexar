@@ -416,7 +416,7 @@ export default function AIConfigPage() {
               type="password"
               value={formData.api_key}
               onChange={(e) => setFormData({ ...formData, api_key: e.target.value.trim() })}
-              placeholder={formData.provider === 'ollama' ? 'Opcional para Ollama local' : formData.provider === 'google' ? 'AIza... (começa com AIza)' : 'Obrigatório'}
+              placeholder={formData.provider === 'ollama' ? 'Opcional para Ollama local' : formData.provider === 'google' ? 'AIza... (começa com AIza)' : formData.provider === 'cloudflare' ? 'Token do Workers AI' : 'Obrigatório'}
               required={formData.provider !== 'ollama'}
             />
             {formData.provider === 'google' && (
@@ -425,14 +425,45 @@ export default function AIConfigPage() {
                 Obtenha em: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Google AI Studio</a>
               </p>
             )}
+            {formData.provider === 'cloudflare' && (
+              <p className="mt-1 text-sm text-gray-500">
+                💡 Obtenha o token em <a href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Cloudflare Dashboard → Workers AI</a> → Use REST API → Create API Token
+              </p>
+            )}
           </div>
 
-          <Input
-            label="URL Base (opcional)"
-            value={formData.base_url}
-            onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
-            placeholder={formData.provider === 'ollama' ? 'http://localhost:11434' : 'Deixe vazio para usar padrão'}
-          />
+          {formData.provider === 'cloudflare' ? (
+            <div>
+              <Input
+                label="Account ID"
+                value={formData.base_url.replace('https://api.cloudflare.com/client/v4/accounts/', '').replace('/ai/run', '')}
+                onChange={(e) => {
+                  const accountId = e.target.value.trim()
+                  setFormData({
+                    ...formData,
+                    base_url: accountId ? `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run` : ''
+                  })
+                }}
+                placeholder="Ex: 5af4777bad39954734e3e99d96f9cb8c"
+                required
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                💡 O Account ID está em Cloudflare Dashboard → Workers AI → Use REST API → Get Account ID
+              </p>
+              {formData.base_url && (
+                <p className="mt-2 text-xs text-green-600 bg-green-50 p-2 rounded">
+                  ✅ URL Final: {formData.base_url}/{formData.model_name || '{modelo}'}
+                </p>
+              )}
+            </div>
+          ) : (
+            <Input
+              label="URL Base (opcional)"
+              value={formData.base_url}
+              onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
+              placeholder={formData.provider === 'ollama' ? 'http://localhost:11434' : 'Deixe vazio para usar padrão'}
+            />
+          )}
 
           <div className="flex items-center space-x-6">
             <label className="flex items-center">

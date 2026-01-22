@@ -109,9 +109,15 @@ AVAILABLE_MODELS = {
         {"name": "@cf/meta/llama-3.1-8b-instruct", "display": "Llama 3.1 8B Instruct (Recomendado)"},
         {"name": "@cf/meta/llama-3.2-3b-instruct", "display": "Llama 3.2 3B Instruct (Rápido)"},
         {"name": "@cf/meta/llama-3.2-1b-instruct", "display": "Llama 3.2 1B Instruct (Ultra Rápido)"},
+        {"name": "@cf/qwen/qwen2.5-coder-32b-instruct", "display": "Qwen 2.5 Coder 32B Instruct"},
+        {"name": "@cf/qwen/qwq-32b", "display": "QwQ 32B (Reasoning)"},
+        {"name": "@cf/qwen/qwen3-30b-a3b-fp8", "display": "Qwen3 30B (Function calling)"},
+        {"name": "@cf/mistral/mistral-small-3.1-24b-instruct", "display": "Mistral Small 3.1 24B Instruct"},
         {"name": "@cf/mistral/mistral-7b-instruct-v0.2", "display": "Mistral 7B Instruct v0.2"},
-        {"name": "@cf/qwen/qwen1.5-14b-chat-awq", "display": "Qwen 1.5 14B Chat"},
+        {"name": "@cf/google/gemma-3-12b-it", "display": "Gemma 3 12B IT"},
         {"name": "@cf/google/gemma-7b-it-lora", "display": "Gemma 7B IT"},
+        {"name": "@cf/ibm/granite-4.0-h-micro", "display": "IBM Granite 4.0 Micro"},
+        {"name": "@cf/meta/llama-guard-3-8b", "display": "Llama Guard 3 8B (Safety)"},
         {"name": "@hf/thebloke/deepseek-coder-6.7b-instruct-awq", "display": "DeepSeek Coder 6.7B"}
     ]
 }
@@ -186,6 +192,85 @@ async def list_google_models(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao listar modelos: {str(e)}")
+
+@router.get("/cloudflare/list-models")
+async def list_cloudflare_models(
+    api_key: str,
+    account_id: str,
+    task: str = "Text Generation",
+    current_user: User = Depends(get_current_user)
+):
+    """Lista modelos disponíveis do Cloudflare Workers AI dinamicamente - apenas admin"""
+    role_str = get_user_role_str(current_user)
+    if role_str.lower() != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
+    
+    if not api_key or not api_key.strip():
+        raise HTTPException(status_code=400, detail="API token é necessário")
+    
+    if not account_id or not account_id.strip():
+        raise HTTPException(status_code=400, detail="Account ID é necessário")
+    
+    api_key = api_key.strip()
+    account_id = account_id.strip()
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Cloudflare API to list models
+            response = await client.get(
+                f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                params={
+                    "task": task,
+                    "per_page": 100
+                },
+                timeout=15.0
+            )
+            
+            if response.status_code != 200:
+                error_text = response.text[:500] if hasattr(response, 'text') else str(response.status_code)
+                try:
+                    error_data = response.json()
+                    if "errors" in error_data:
+                        error_text = str(error_data["errors"])
+                except:
+                    pass
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Erro ao listar modelos: {error_text}"
+                )
+            
+            data = response.json()
+            models = []
+            
+            if data.get("success") and "result" in data:
+                for model in data["result"]:
+                    model_id = model.get("id", "")
+                    model_name = model.get("name", model_id)
+                    description = model.get("description", "")
+                    task_type = model.get("task", {}).get("name", "")
+                    
+                    # Format display name
+                    display = f"{model_name}"
+                    if task_type:
+                        display += f" ({task_type})"
+                    
+                    models.append({
+                        "name": model_id,
+                        "display": display,
+                        "description": description[:100] if description else ""
+                    })
+            
+            return {"models": models}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar modelos: {str(e)}")
+
 
 @router.get("/", response_model=List[AIConfigResponse])
 async def list_ai_configs(
