@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.ai_config import AIConfig, AIModelStatus
 from app.api.ai import call_ai_api, get_active_ai_config
+from app.api.helena_prompts import get_helena_prompt
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import json
@@ -235,7 +236,8 @@ Be friendly, professional, and helpful. If the visitor wants contact information
 IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the CRM. Only provide information and guide the visitor."""
         }
 
-        base_prompt = language_prompts.get(request.language, language_prompts["en"])
+        # Usar prompt do módulo helena_prompts (com base de conhecimento atualizada)
+        base_prompt = get_helena_prompt(request.language)
         
         if request.context:
             context_str = json.dumps(request.context, ensure_ascii=False)
