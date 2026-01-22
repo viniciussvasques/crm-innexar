@@ -141,6 +141,36 @@ class SiteTemplateCreate(BaseModel):
 
 # ============== Order Endpoints ==============
 
+@router.get("/public/{short_id}")
+async def get_order_public(
+    short_id: str,
+    email: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get order by short_id (last 8 chars of stripe_session_id) - no auth required"""
+    # Find by matching last 8 chars of stripe_session_id
+    result = await db.execute(
+        select(SiteOrder)
+        .options(
+            selectinload(SiteOrder.onboarding),
+            selectinload(SiteOrder.addons).selectinload(SiteOrderAddon.addon)
+        )
+        .where(
+            func.upper(func.right(SiteOrder.stripe_session_id, 8)) == short_id.upper()
+        )
+    )
+    order = result.scalar_one_or_none()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # If email provided, verify it matches (basic security)
+    if email and order.customer_email.lower() != email.lower():
+        raise HTTPException(status_code=403, detail="Email does not match order")
+    
+    return order
+
+
 @router.get("/")
 async def list_orders(
     status_filter: Optional[SiteOrderStatus] = None,
