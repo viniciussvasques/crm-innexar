@@ -169,6 +169,60 @@ async def get_current_customer(
     return customer
 
 
+@router.get("/me/orders")
+async def get_customer_orders(
+    token: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all orders for the current customer from token"""
+    payload = decode_customer_token(token)
+    customer_id = int(payload["sub"])
+    
+    customer = await db.get(SiteCustomer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Get all orders linked to this customer
+    from app.models.site_order import SiteOrder
+    
+    result = await db.execute(
+        select(SiteOrder).where(SiteOrder.id == customer.order_id)
+    )
+    order = result.scalar_one_or_none()
+    
+    if not order:
+        return {"orders": [], "customer": {"id": customer.id, "email": customer.email}}
+    
+    # Return order with onboarding data
+    order_data = {
+        "id": order.id,
+        "customer_name": order.customer_name,
+        "customer_email": order.customer_email,
+        "status": order.status.value if order.status else "pending",
+        "total_price": float(order.total_price),
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "expected_delivery_date": order.expected_delivery_date.isoformat() if order.expected_delivery_date else None,
+        "site_url": order.site_url,
+        "revisions_included": order.revisions_included,
+        "revisions_used": order.revisions_used,
+        "onboarding": None
+    }
+    
+    if order.onboarding:
+        order_data["onboarding"] = {
+            "business_name": order.onboarding.business_name,
+            "primary_city": order.onboarding.primary_city,
+            "state": order.onboarding.state,
+            "primary_color": order.onboarding.primary_color,
+            "is_complete": order.onboarding.is_complete
+        }
+    
+    return {
+        "orders": [order_data],
+        "customer": {"id": customer.id, "email": customer.email}
+    }
+
+
 @router.post("/reset-password")
 async def reset_password(
     data: PasswordReset,
