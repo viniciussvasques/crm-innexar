@@ -21,7 +21,7 @@ router = APIRouter(prefix="/site-customers", tags=["site-customers"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT settings
-SECRET_KEY = settings.secret_key
+SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 1 week
 
