@@ -8,17 +8,20 @@ from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.models.user import User
 from app.models.ai_config import AIConfig, AIModelStatus
+from app.models.chat_session import ChatSession, ChatMessage
 from app.api.ai import call_ai_api, get_active_ai_config
 from app.api.helena_prompts import get_helena_prompt
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import json
+import uuid
 from datetime import datetime
 
 router = APIRouter(tags=["ai-public"])
 
 class PublicAIRequest(BaseModel):
     message: str
+    session_id: Optional[str] = None  # ID da sessão para memória
     language: Optional[str] = "pt"
     context: Optional[Dict[str, Any]] = None
 
@@ -239,6 +242,48 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
         # Usar prompt do módulo helena_prompts (com base de conhecimento atualizada)
         base_prompt = get_helena_prompt(request.language)
         
+        # === GERENCIAR SESSÃO ===
+        session = None
+        history_text = ""
+        
+        if request.session_id:
+            # Buscar sessão existente
+            result = await db.execute(
+                select(ChatSession).where(ChatSession.id == request.session_id)
+            )
+            session = result.scalar_one_or_none()
+        
+        if not session:
+            # Criar nova sessão
+            session = ChatSession(
+                id=request.session_id or str(uuid.uuid4()),
+                language=request.language or "pt",
+                visitor_hash=request.context.get("visitor_hash", "") if request.context else ""
+            )
+            db.add(session)
+            await db.flush()
+        else:
+            # Atualizar última atividade
+            session.last_activity = datetime.utcnow()
+        
+        # Buscar histórico (últimas 10 mensagens)
+        history_result = await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session.id)
+            .order_by(ChatMessage.timestamp.desc())
+            .limit(10)
+        )
+        history_messages = list(reversed(history_result.scalars().all()))
+        
+        # Formatar histórico para o prompt
+        if history_messages:
+            history_lines = []
+            for msg in history_messages:
+                role_label = "Visitante" if msg.role == "user" else "Helena"
+                history_lines.append(f"{role_label}: {msg.content}")
+            history_text = "\n".join(history_lines)
+            base_prompt += f"\n\n=== HISTÓRICO DA CONVERSA ===\n{history_text}\n\n=== REGRAS DE CONTEXTO ===\n1. USE o histórico para manter contexto\n2. NÃO repita informações já dadas\n3. Desenvolva a conversa baseado no que foi falado"
+        
         if request.context:
             context_str = json.dumps(request.context, ensure_ascii=False)
             base_prompt += f"\n\nContexto adicional: {context_str}"
@@ -249,8 +294,27 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
             # Usar configuração de IA ativa (call_ai_api já busca automaticamente)
             response = await call_ai_api(full_prompt, max_tokens=1000, db=db)
             
+            # Salvar mensagem do usuário
+            user_message = ChatMessage(
+                session_id=session.id,
+                role="user",
+                content=request.message
+            )
+            db.add(user_message)
+            
+            # Salvar resposta da Helena
+            assistant_message = ChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=response
+            )
+            db.add(assistant_message)
+            
+            await db.commit()
+            
             return {
                 "response": response,
+                "session_id": session.id,
                 "timestamp": datetime.utcnow().isoformat(),
                 "language": request.language
             }

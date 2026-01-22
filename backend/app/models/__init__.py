@@ -14,6 +14,7 @@ from app.models.site_order import (
     SiteOrderAddon, SiteTemplate, SiteNiche, SiteTone, SiteCTA
 )
 from app.models.system_config import SystemConfig, DEFAULT_CONFIGS
+from app.models.chat_session import ChatSession, ChatMessage
 
 __all__ = [
     "User", "Contact", "Opportunity", "Activity", 
@@ -24,7 +25,8 @@ __all__ = [
     "GoalStatus", "GoalCategory",
     "SiteOrder", "SiteOrderStatus", "SiteOnboarding", "SiteAddon",
     "SiteOrderAddon", "SiteTemplate", "SiteNiche", "SiteTone", "SiteCTA",
-    "SystemConfig", "DEFAULT_CONFIGS"
+    "SystemConfig", "DEFAULT_CONFIGS",
+    "ChatSession", "ChatMessage"
 ]
 
 
