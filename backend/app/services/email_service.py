@@ -19,26 +19,56 @@ DEFAULT_FROM_NAME = "Innexar"
 
 
 def load_smtp_config_from_db():
-    """Load SMTP configuration from database."""
+    """Load SMTP configuration from database using psycopg2."""
     try:
-        from sqlalchemy import create_engine, text
-        from app.core.config import settings
+        import psycopg2
+        import os
         
-        engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""))
-        with engine.connect() as conn:
-            result = conn.execute(text(
-                "SELECT key, value FROM system_configs WHERE key IN "
-                "('smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name')"
-            ))
-            config = {row[0]: row[1] for row in result}
-            return {
-                'smtp_host': config.get('smtp_host', DEFAULT_SMTP_HOST),
-                'smtp_port': int(config.get('smtp_port', DEFAULT_SMTP_PORT)),
-                'smtp_user': config.get('smtp_user', DEFAULT_SMTP_USER),
-                'smtp_password': config.get('smtp_password', DEFAULT_SMTP_PASSWORD),
-                'from_email': config.get('smtp_from_email', DEFAULT_FROM_EMAIL),
-                'from_name': config.get('smtp_from_name', DEFAULT_FROM_NAME),
-            }
+        # Parse DATABASE_URL into connection params
+        db_url = os.getenv("DATABASE_URL", "")
+        if not db_url:
+            return None
+        
+        # postgresql://user:pass@host:port/dbname -> extract parts
+        # Remove scheme
+        db_url = db_url.replace("postgresql+asyncpg://", "").replace("postgresql://", "")
+        
+        # Split user:pass@host:port/dbname
+        auth, rest = db_url.split("@")
+        user, password = auth.split(":")
+        host_port, dbname = rest.split("/")
+        
+        if ":" in host_port:
+            host, port = host_port.split(":")
+        else:
+            host, port = host_port, "5432"
+        
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            dbname=dbname
+        )
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT key, value FROM system_configs WHERE key IN "
+            "('smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name')"
+        )
+        config = {row[0]: row[1] for row in cur.fetchall()}
+        cur.close()
+        conn.close()
+        
+        print(f"Loaded SMTP config from database: host={config.get('smtp_host')}, user={config.get('smtp_user')}")
+        
+        return {
+            'smtp_host': config.get('smtp_host', DEFAULT_SMTP_HOST),
+            'smtp_port': int(config.get('smtp_port', DEFAULT_SMTP_PORT)),
+            'smtp_user': config.get('smtp_user', DEFAULT_SMTP_USER),
+            'smtp_password': config.get('smtp_password', DEFAULT_SMTP_PASSWORD),
+            'from_email': config.get('smtp_from_email', DEFAULT_FROM_EMAIL),
+            'from_name': config.get('smtp_from_name', DEFAULT_FROM_NAME),
+        }
     except Exception as e:
         print(f"Warning: Could not load SMTP config from database: {e}")
         return None
