@@ -300,3 +300,83 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
             detail=f"Erro no chat: {str(e)}"
         )
 
+
+# ============ CAPTURA DE LEADS ============
+
+class LeadCaptureRequest(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+    interest: Optional[str] = None
+    conversation_summary: Optional[str] = None
+    language: Optional[str] = "pt"
+
+@router.post("/lead")
+async def capture_lead_from_chat(
+    request: LeadCaptureRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Captura lead a partir de conversa com Helena.
+    Cria contato no CRM automaticamente.
+    """
+    from app.models.contact import Contact
+    
+    try:
+        # Buscar admin para atribuir o contato
+        result = await db.execute(
+            select(User).where(User.role == "admin", User.is_active == True).limit(1)
+        )
+        admin_user = result.scalar_one_or_none()
+        
+        if not admin_user:
+            raise HTTPException(status_code=500, detail="Sistema não configurado")
+        
+        # Verificar se já existe contato com esse email
+        existing = await db.execute(
+            select(Contact).where(Contact.email == request.email).limit(1)
+        )
+        existing_contact = existing.scalar_one_or_none()
+        
+        if existing_contact:
+            # Atualizar notas do contato existente
+            existing_contact.notes = (existing_contact.notes or "") + f"\n\n--- Chat com Helena ({datetime.utcnow().isoformat()}) ---\n{request.conversation_summary or request.interest or ''}"
+            await db.commit()
+            
+            return {
+                "success": True,
+                "message": "Contato atualizado com nova conversa",
+                "contact_id": existing_contact.id,
+                "is_new": False
+            }
+        
+        # Criar novo contato
+        new_contact = Contact(
+            name=request.name,
+            email=request.email,
+            phone=request.phone,
+            status="lead",
+            source="helena_chat",
+            notes=f"Interesse: {request.interest or 'Não especificado'}\n\nConversa:\n{request.conversation_summary or ''}",
+            owner_id=admin_user.id
+        )
+        
+        db.add(new_contact)
+        await db.commit()
+        await db.refresh(new_contact)
+        
+        return {
+            "success": True,
+            "message": "Lead capturado com sucesso!",
+            "contact_id": new_contact.id,
+            "is_new": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao capturar lead: {str(e)}"
+        )
