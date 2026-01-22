@@ -226,11 +226,12 @@ async def reset_password(
 async def create_customer_account(
     db: AsyncSession,
     order_id: int,
-    email: str
+    email: str,
+    password: Optional[str] = None
 ) -> tuple[SiteCustomer, str]:
     """
     Create a customer account for an order.
-    Returns (customer, temp_password)
+    Returns (customer, password_used)
     """
     # Check if customer already exists
     result = await db.execute(
@@ -240,14 +241,14 @@ async def create_customer_account(
     if existing:
         raise HTTPException(status_code=400, detail="Customer account already exists for this order")
     
-    # Generate credentials
-    temp_password = SiteCustomer.generate_temp_password()
+    # Generate credentials if not provided
+    actual_password = password or SiteCustomer.generate_temp_password()
     verification_token = SiteCustomer.generate_verification_token()
     
     customer = SiteCustomer(
         order_id=order_id,
         email=email.lower(),
-        password_hash=hash_password(temp_password),
+        password_hash=hash_password(actual_password),
         email_verified=False,
         verification_token=verification_token,
         verification_sent_at=datetime.utcnow()
@@ -256,4 +257,4 @@ async def create_customer_account(
     db.add(customer)
     await db.flush()
     
-    return customer, temp_password
+    return customer, actual_password

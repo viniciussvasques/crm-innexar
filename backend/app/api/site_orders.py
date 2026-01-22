@@ -85,6 +85,9 @@ class SiteOnboardingCreate(BaseModel):
     # Metadata
     is_complete: bool = False
     completed_steps: int = 0
+    
+    # Account creation
+    password: Optional[str] = None
 
 
 class SiteOrderStatusUpdate(BaseModel):
@@ -416,7 +419,8 @@ async def submit_onboarding(
         customer, temp_password = await create_customer_account(
             db=db,
             order_id=order.id,
-            email=order.customer_email
+            email=order.customer_email,
+            password=onboarding_data.password
         )
         verification_token = customer.verification_token
     except HTTPException:
