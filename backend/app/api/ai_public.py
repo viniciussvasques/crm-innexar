@@ -78,7 +78,46 @@ async def extract_lead_from_conversation(session_id: str, db: AsyncSession) -> O
                             name = f"{clean_word} {next_word}"
                     break
     
-    return {"name": name or "Lead do Chat", "email": email}
+    # Extrair empresa (padrões: "empresa X", "company X", "da/de X")
+    company = None
+    company_patterns = [
+        r'(?:empresa|company|companhia|negócio|negocio)\s+([A-Za-zÀ-ÿ0-9]+(?:\s+[A-Za-zÀ-ÿ0-9]+)?)',
+        r'(?:da|de|do|from|at)\s+([A-Z][A-Za-zÀ-ÿ0-9]+(?:\s+[A-Za-zÀ-ÿ0-9]+)?)',
+    ]
+    for pattern in company_patterns:
+        match = re.search(pattern, full_text, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip()
+            # Evitar palavras comuns
+            if candidate.lower() not in ['minha', 'meu', 'logística', 'logistica', 'seguros', 'app', 'site']:
+                company = candidate.title()
+                break
+    
+    # Detectar tipo de projeto
+    project_keywords = {
+        'app': ['app', 'aplicativo', 'aplicação', 'mobile', 'android', 'ios'],
+        'site': ['site', 'website', 'landing', 'página', 'pagina', 'web'],
+        'plataforma': ['plataforma', 'platform', 'saas', 'sistema', 'erp'],
+        'ecommerce': ['ecommerce', 'e-commerce', 'loja', 'marketplace', 'vendas online'],
+    }
+    
+    project_type = None
+    full_text_lower = full_text.lower()
+    for ptype, keywords in project_keywords.items():
+        if any(kw in full_text_lower for kw in keywords):
+            project_type = ptype
+            break
+    
+    # Resumo da conversa (primeiras 500 chars de cada mensagem do usuário)
+    conversation_summary = "\n".join([f"- {msg.content[:200]}" for msg in user_messages[:10]])
+    
+    return {
+        "name": name or "Lead do Chat", 
+        "email": email,
+        "company": company,
+        "project_type": project_type,
+        "conversation_summary": conversation_summary
+    }
 
 
 async def create_lead_from_chat(lead_data: Dict[str, str], session: ChatSession, db: AsyncSession):
@@ -107,13 +146,23 @@ async def create_lead_from_chat(lead_data: Dict[str, str], session: ChatSession,
         if not admin:
             return None
         
-        # Criar novo contato
+        # Criar novo contato com todos os dados extraídos
+        conversation_notes = f"""Lead capturado automaticamente via chat com Helena.
+Sessão: {session.id}
+Data: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}
+
+=== CONVERSA ===
+{lead_data.get('conversation_summary', '')}
+"""
+        
         new_contact = Contact(
             name=lead_data["name"],
             email=lead_data["email"],
+            company=lead_data.get("company"),
+            project_type=lead_data.get("project_type"),
             status="lead",
             source="helena_chat",
-            notes=f"Lead capturado automaticamente via chat com Helena.\nSessão: {session.id}",
+            notes=conversation_notes,
             owner_id=admin.id
         )
         
