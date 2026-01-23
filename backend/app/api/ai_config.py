@@ -373,6 +373,61 @@ async def create_ai_config(
         last_error=config.last_error
     )
 
+# --- Task Routing Endpoints ---
+
+@router.get("/routing", response_model=List[AIRoutingResponse])
+async def get_ai_routing(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista regras de roteamento de IA"""
+    result = await db.execute(select(AITaskRouting))
+    routings = result.scalars().all()
+    return routings or []
+
+@router.post("/routing")
+async def update_ai_routing(
+    routing_data: AIRoutingUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza ou cria regra de roteamento"""
+    # Verifica se os configs existem
+    if routing_data.primary_config_id:
+        p_config = await db.get(AIConfig, routing_data.primary_config_id)
+        if not p_config:
+            raise HTTPException(status_code=404, detail="Primary config not found")
+            
+    if routing_data.fallback_config_id:
+        f_config = await db.get(AIConfig, routing_data.fallback_config_id)
+        if not f_config:
+            raise HTTPException(status_code=404, detail="Fallback config not found")
+
+    # Busca routing existente
+    result = await db.execute(
+        select(AITaskRouting).where(AITaskRouting.task_type == routing_data.task_type)
+    )
+    routing = result.scalar_one_or_none()
+    
+    if routing:
+        routing.primary_config_id = routing_data.primary_config_id
+        routing.fallback_config_id = routing_data.fallback_config_id
+        if routing_data.temperature is not None:
+            routing.temperature = routing_data.temperature
+        routing.updated_at = datetime.utcnow()
+    else:
+        routing = AITaskRouting(
+            task_type=routing_data.task_type,
+            primary_config_id=routing_data.primary_config_id,
+            fallback_config_id=routing_data.fallback_config_id,
+            temperature=routing_data.temperature or 0.7
+        )
+        db.add(routing)
+    
+    await db.commit()
+    await db.refresh(routing)
+    return routing
+
 @router.put("/{config_id}", response_model=AIConfigResponse)
 async def update_ai_config(
     config_id: int,
