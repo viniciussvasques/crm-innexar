@@ -378,11 +378,14 @@ export default function ProjectsPage() {
                 <p className="text-white whitespace-pre-wrap">{selectedProject.technical_requirements}</p>
               </div>
             )}
-            {(selectedProject.repository_url || selectedProject.deployment_url) && (
+            {(selectedProject.repository_url || selectedProject.deployment_url || true) && (
               <div className="flex gap-3">
+                <a href={`/projects/${selectedProject.id}/ide`} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors">
+                  <Code className="w-4 h-4" /> Open Visual Editor
+                </a>
                 {selectedProject.repository_url && (
                   <a href={selectedProject.repository_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors">
-                    <Code className="w-4 h-4" /> Repository <ExternalLink className="w-4 h-4" />
+                    <ExternalLink className="w-4 h-4" /> Repository
                   </a>
                 )}
                 {selectedProject.deployment_url && (

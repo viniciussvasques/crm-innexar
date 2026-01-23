@@ -7,7 +7,8 @@ from app.api import (
     external, commissions, quote_requests, notifications, ai, templates, 
     goals, ai_actions, ai_config, ai_chat, lead_analysis, webhooks, 
     ai_public, site_orders, system_config, public_config, emails, 
-    site_customers, site_generator_config
+    ai_public, site_orders, system_config, public_config, emails, 
+    site_customers, site_generator_config, site_files
 )
 
 
@@ -58,6 +59,7 @@ app.include_router(public_config.router, prefix="/api", tags=["public-config"])
 app.include_router(emails.router, tags=["emails"])
 app.include_router(site_customers.router, prefix="/api", tags=["site-customers"])
 app.include_router(site_generator_config.router, prefix="/api", tags=["site-generator-config"])
+app.include_router(site_files.router, prefix="/api", tags=["site-files"])
 
 # New clean customer auth module
 from app.api.customer_auth import router as customer_auth_router

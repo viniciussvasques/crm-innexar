@@ -27,9 +27,12 @@ class Settings(BaseSettings):
     # External API
     EXTERNAL_API_TOKEN: str = "change-me-in-production-external-token"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # Allow extra env vars to prevent startup crash
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "extra": "ignore"
+    }
 
 settings = Settings()
 
