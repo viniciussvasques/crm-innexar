@@ -358,7 +358,7 @@ export default function SettingsPage() {
 
         // Load initial
         useEffect(() => {
-            api.get('/api/ai-config/routing').then(res => {
+            api.get('/api/ai-config/router-rules').then(res => {
                 const route = res.data.find((r: any) => r.task_type === task)
                 if (route) setSelectedId(String(route.primary_config_id))
             })
@@ -368,7 +368,7 @@ export default function SettingsPage() {
             setSelectedId(configId)
             setLoading(true)
             try {
-                await api.post('/api/ai-config/routing', {
+                await api.post('/api/ai-config/router-rules', {
                     task_type: task,
                     primary_config_id: parseInt(configId)
                 })

@@ -375,7 +375,7 @@ async def create_ai_config(
 
 # --- Task Routing Endpoints (Fixed Order) ---
 
-@router.get("/routing", response_model=List[AIRoutingResponse])
+@router.get("/router-rules", response_model=List[AIRoutingResponse])
 async def get_ai_routing(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -385,7 +385,7 @@ async def get_ai_routing(
     routings = result.scalars().all()
     return routings or []
 
-@router.post("/routing")
+@router.post("/router-rules")
 async def update_ai_routing(
     routing_data: AIRoutingUpdate,
     db: AsyncSession = Depends(get_db),
