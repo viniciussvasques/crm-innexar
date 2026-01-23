@@ -78,6 +78,11 @@ jobs:
             # Restart containers
             docker compose up -d
             
+            # Run Migrations (Site Generator Configs)
+            # Using || true to prevent deploy failure if migration fails (for safety in first run)
+            # In production, remove || true once stable
+            docker exec crm-backend python migrations/add_site_generator_config_tables.py || true
+            
             # Cleanup old images
             docker image prune -f
             

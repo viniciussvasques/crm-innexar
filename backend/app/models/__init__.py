@@ -19,6 +19,10 @@ from app.models.support_ticket import (
     SupportTicket, TicketMessage, CustomerNotification,
     TicketStatus, TicketPriority
 )
+from app.models.configuration import (
+    IntegrationConfig, DeployServer, IntegrationType, ServerType
+)
+from app.models.ai_config import AITaskRouting
 
 __all__ = [
     "User", "Contact", "Opportunity", "Activity", 
@@ -32,7 +36,10 @@ __all__ = [
     "SystemConfig", "DEFAULT_CONFIGS",
     "ChatSession", "ChatMessage",
     "SupportTicket", "TicketMessage", "CustomerNotification",
-    "TicketStatus", "TicketPriority"
+    "SupportTicket", "TicketMessage", "CustomerNotification",
+    "TicketStatus", "TicketPriority",
+    "IntegrationConfig", "DeployServer", "AITaskRouting",
+    "IntegrationType", "ServerType"
 ]
 
 

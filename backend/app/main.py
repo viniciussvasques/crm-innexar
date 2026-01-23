@@ -2,7 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import auth, users, contacts, opportunities, activities, dashboard, projects, external, commissions, quote_requests, notifications, ai, templates, goals, ai_actions, ai_config, ai_chat, lead_analysis, webhooks, ai_public, site_orders, system_config, public_config, emails, site_customers
+from app.api import (
+    auth, users, contacts, opportunities, activities, dashboard, projects, 
+    external, commissions, quote_requests, notifications, ai, templates, 
+    goals, ai_actions, ai_config, ai_chat, lead_analysis, webhooks, 
+    ai_public, site_orders, system_config, public_config, emails, 
+    site_customers, site_generator_config
+)
 
 
 # Criar tabelas
@@ -51,6 +57,7 @@ app.include_router(system_config.router, prefix="/api", tags=["system-config"])
 app.include_router(public_config.router, prefix="/api", tags=["public-config"])
 app.include_router(emails.router, tags=["emails"])
 app.include_router(site_customers.router, prefix="/api", tags=["site-customers"])
+app.include_router(site_generator_config.router, prefix="/api", tags=["site-generator-config"])
 
 # New clean customer auth module
 from app.api.customer_auth import router as customer_auth_router

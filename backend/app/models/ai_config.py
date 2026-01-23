@@ -1,7 +1,7 @@
 """
 Modelo para configurações de IA
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Float
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from datetime import datetime
@@ -48,4 +48,29 @@ class AIConfig(Base):
     
     # Relationships
     created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class AITaskRouting(Base):
+    """Routing rules for AI tasks to specific models"""
+    __tablename__ = "ai_task_routing"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_type = Column(String(50), unique=True, nullable=False)  # code_generation, content_generation, analysis
+    
+    # Primary Provider
+    primary_config_id = Column(Integer, ForeignKey("ai_configs.id"), nullable=False)
+    
+    # Fallback Provider
+    fallback_config_id = Column(Integer, ForeignKey("ai_configs.id"), nullable=True)
+    
+    # Settings override
+    temperature = Column(Float, default=0.7)
+    max_tokens = Column(Integer, default=4000)
+    
+    # Relationships
+    primary_config = relationship("AIConfig", foreign_keys=[primary_config_id])
+    fallback_config = relationship("AIConfig", foreign_keys=[fallback_config_id])
+
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
