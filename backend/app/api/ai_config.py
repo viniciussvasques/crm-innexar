@@ -373,7 +373,7 @@ async def create_ai_config(
         last_error=config.last_error
     )
 
-# --- Task Routing Endpoints ---
+# --- Task Routing Endpoints (Fixed Order) ---
 
 @router.get("/routing", response_model=List[AIRoutingResponse])
 async def get_ai_routing(
