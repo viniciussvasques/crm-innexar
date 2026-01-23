@@ -482,11 +482,16 @@ async def submit_onboarding(
 
     await db.commit()
     
+    # Auto-trigger AI generation in background
+    service = SiteGeneratorService(db)
+    background_tasks.add_task(service.generate_site, order.id)
+    
     return {
         "message": "Onboarding submitted successfully", 
         "order_id": order_id,
         "account_created": temp_password is not None,
-        "verification_token": verification_token
+        "verification_token": verification_token,
+        "generation_started": True
     }
 
 
