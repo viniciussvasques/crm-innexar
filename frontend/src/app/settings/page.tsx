@@ -500,7 +500,7 @@ export default function SettingsPage() {
     }
 
     const renderIntegrationsTab = () => (
-        <div className="space-y-8 max-w-2xl">
+        <form onSubmit={(e) => { e.preventDefault(); handleSaveIntegrations(); }} className="space-y-8 max-w-2xl">
             <div className="bg-white/5 border border-white/10 rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-4">
                     <div className="p-2 bg-white/10 rounded-lg"><LinkIcon className="w-6 h-6 text-white" /></div>
@@ -514,6 +514,7 @@ export default function SettingsPage() {
                         <label className="block text-sm text-slate-400 mb-1">Personal Access Token (Classic)</label>
                         <input type="password" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white"
                             placeholder="ghp_..."
+                            autoComplete="new-password"
                             value={integrationForm.github_token} onChange={e => setIntegrationForm({ ...integrationForm, github_token: e.target.value })} />
                     </div>
                 </div>
@@ -532,21 +533,23 @@ export default function SettingsPage() {
                         <label className="block text-sm text-slate-400 mb-1">Account ID</label>
                         <input className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white"
                             placeholder="e.g. 8d9e..."
+                            autoComplete="off"
                             value={integrationForm.cloudflare_account} onChange={e => setIntegrationForm({ ...integrationForm, cloudflare_account: e.target.value })} />
                     </div>
                     <div>
                         <label className="block text-sm text-slate-400 mb-1">API Token</label>
                         <input type="password" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white"
                             placeholder="All operations token"
+                            autoComplete="new-password"
                             value={integrationForm.cloudflare_token} onChange={e => setIntegrationForm({ ...integrationForm, cloudflare_token: e.target.value })} />
                     </div>
                 </div>
             </div>
 
             <div className="flex justify-end pt-4">
-                <Button onClick={handleSaveIntegrations}>Save Integrations</Button>
+                <Button type="submit">Save Integrations</Button>
             </div>
-        </div>
+        </form>
     )
 
     // --- Main Render ---
