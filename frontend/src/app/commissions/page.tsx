@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -9,6 +9,8 @@ import Modal from '@/components/Modal'
 import Button from '@/components/Button'
 import Input from '@/components/Input'
 import Select from '@/components/Select'
+import { motion } from 'framer-motion'
+import { Wallet, DollarSign, Calculator, Settings, TrendingUp, CheckCircle, Clock, Plus } from 'lucide-react'
 
 interface CommissionStructure {
   id: number
@@ -58,20 +60,12 @@ export default function CommissionsPage() {
   const [showStructureForm, setShowStructureForm] = useState(false)
   const [showCalculator, setShowCalculator] = useState(false)
   const [calculationResult, setCalculationResult] = useState<CommissionCalculation | null>(null)
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
-  const [calculatorData, setCalculatorData] = useState({
-    deal_value: '',
-    structure_id: ''
-  })
+  const [calculatorData, setCalculatorData] = useState({ deal_value: '', structure_id: '' })
   const [structureForm, setStructureForm] = useState({
-    name: '',
-    weekly_base: '100.00',
-    currency: 'USD',
-    tiered_commissions: [{ min: 0, max: null, rate: 0.05 }],
+    name: '', weekly_base: '100.00', currency: 'USD',
+    tiered_commissions: [{ min: 0, max: null as number | null, rate: 0.05 }],
     performance_bonuses: [{ threshold: 10000, bonus: 150 }],
-    recurring_commission_rate: '0.10',
-    new_client_bonus: '100.00',
-    new_client_threshold: '10'
+    recurring_commission_rate: '0.10', new_client_bonus: '100.00', new_client_threshold: '10'
   })
 
   const loadData = useCallback(async () => {
@@ -110,16 +104,6 @@ export default function CommissionsPage() {
     try {
       await api.post('/api/commissions/structures', structureForm)
       setShowStructureForm(false)
-      setStructureForm({
-        name: '',
-        weekly_base: '100.00',
-        currency: 'USD',
-        tiered_commissions: [{ min: 0, max: null, rate: 0.05 }],
-        performance_bonuses: [{ threshold: 10000, bonus: 150 }],
-        recurring_commission_rate: '0.10',
-        new_client_bonus: '100.00',
-        new_client_threshold: '10'
-      })
       loadData()
       toast.success(t('commissions.structureCreated'))
     } catch (error) {
@@ -131,406 +115,241 @@ export default function CommissionsPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const token = localStorage.getItem('token')
-    if (!token) {
-      router.push('/login')
-      return
-    }
+    if (!token) { router.push('/login'); return }
     loadData()
   }, [router, loadData])
 
+  // Stats
+  const stats = useMemo(() => ({
+    totalCommissions: commissions.length,
+    totalPaid: commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + c.commission_amount, 0),
+    totalPending: commissions.filter(c => c.status !== 'paid').reduce((sum, c) => sum + c.commission_amount, 0),
+    activeStructures: structures.filter(s => s.is_active).length
+  }), [commissions, structures])
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-white/10 rounded-lg w-48"></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (<div key={i} className="h-24 bg-white/5 rounded-xl"></div>))}
+          </div>
+          <div className="h-96 bg-white/5 rounded-xl"></div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="mb-6 flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-gray-900">{t('commissions.title')}</h2>
-        <div className="flex gap-3">
-          <Button onClick={() => setShowCalculator(true)} variant="outline">
-            {t('commissions.calculate')}
-          </Button>
-          <Button onClick={() => setShowStructureForm(true)}>
-            {t('commissions.configure')}
-          </Button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="p-4 lg:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-white flex items-center gap-3">
+              <Wallet className="w-8 h-8 text-emerald-400" />
+              {t('commissions.title')}
+            </h1>
+            <p className="text-slate-400 mt-1">Commission tracking and structures</p>
+          </div>
+          <div className="flex gap-3">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowCalculator(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/10 text-white rounded-xl font-medium hover:bg-white/20 transition-colors"
+            >
+              <Calculator className="w-5 h-5" />
+              {t('commissions.calculate')}
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowStructureForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-shadow"
+            >
+              <Plus className="w-5 h-5" />
+              {t('commissions.configure')}
+            </motion.button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Commissions', value: stats.totalCommissions, icon: Wallet, color: 'blue' },
+            { label: 'Total Paid', value: `$${stats.totalPaid.toLocaleString()}`, icon: CheckCircle, color: 'emerald' },
+            { label: 'Pending', value: `$${stats.totalPending.toLocaleString()}`, icon: Clock, color: 'amber' },
+            { label: 'Active Structures', value: stats.activeStructures, icon: Settings, color: 'purple' }
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/[0.08] transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">{stat.label}</p>
+                  <p className="text-2xl font-bold text-white mt-1">{stat.value}</p>
+                </div>
+                <div className={`w-10 h-10 rounded-lg bg-${stat.color}-500/20 flex items-center justify-center`}>
+                  <stat.icon className={`w-5 h-5 text-${stat.color}-400`} />
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Commission Structures */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
+          <h3 className="text-xl font-semibold text-white mb-4">{t('commissions.structure')}</h3>
+          {structures.length === 0 ? (
+            <p className="text-slate-400">{t('commissions.noStructures')}</p>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {structures.map((structure) => (
+                <motion.div
+                  key={structure.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="bg-white/5 border border-white/10 rounded-xl p-4"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-semibold text-white">{structure.name}</h4>
+                      <p className="text-sm text-slate-400">{t('commissions.weeklyBase')}: ${structure.weekly_base} {structure.currency}</p>
+                    </div>
+                    <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${structure.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+                      }`}>
+                      {structure.is_active ? t('common.active') : t('common.inactive')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-slate-500 mb-1">{t('commissions.tieredCommission')}:</p>
+                      {structure.tiered_commissions.map((tier, idx) => (
+                        <p key={idx} className="text-slate-300">
+                          ${tier.min.toLocaleString()} - {tier.max ? `$${tier.max.toLocaleString()}` : '∞'}: {(tier.rate * 100).toFixed(1)}%
+                        </p>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="text-slate-500 mb-1">{t('commissions.performanceBonus')}:</p>
+                      {structure.performance_bonuses.map((bonus, idx) => (
+                        <p key={idx} className="text-slate-300">${bonus.threshold.toLocaleString()}: ${bonus.bonus}</p>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Commission History */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden">
+          <div className="p-6 border-b border-white/10">
+            <h3 className="text-xl font-semibold text-white">{t('commissions.history')}</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.name')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('commissions.dealSize')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('commissions.commissionAmount')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.date')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.status')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {commissions.map((commission, i) => {
+                  const user = users.find(u => u.id === commission.seller_id)
+                  return (
+                    <motion.tr
+                      key={commission.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="hover:bg-white/[0.03] transition-colors"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
+                            {(user?.name || 'U').charAt(0)}
+                          </div>
+                          <span className="text-white font-medium">{user?.name || t('common.na')}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-400">${commission.deal_value.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-emerald-400 font-semibold">${commission.commission_amount.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-slate-400">{new Date(commission.created_at).toLocaleDateString()}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${commission.status === 'paid'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                          {commission.status === 'paid' ? t('commissions.paid') : t('commissions.pending')}
+                        </span>
+                      </td>
+                    </motion.tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {commissions.length === 0 && (
+            <div className="p-12 text-center">
+              <Wallet className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400">{t('commissions.noCommissions')}</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Estruturas de Comissão */}
-      <div className="mb-8 bg-white rounded-lg shadow p-6">
-        <h3 className="text-xl font-semibold mb-4">{t('commissions.structure')}</h3>
-        {structures.length === 0 ? (
-          <p className="text-gray-500">{t('commissions.noStructures')}</p>
-        ) : (
-          <div className="space-y-4">
-            {structures.map((structure) => (
-              <div key={structure.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h4 className="font-semibold">{structure.name}</h4>
-                    <p className="text-sm text-gray-500">{t('commissions.weeklyBase')}: ${structure.weekly_base} {structure.currency}</p>
-                  </div>
-                  <span className={`px-2 py-1 text-xs rounded-full ${structure.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {structure.is_active ? t('common.active') : t('common.inactive')}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium mb-2">{t('commissions.tieredCommission')}:</p>
-                    <div className="space-y-1">
-                      {structure.tiered_commissions.map((tier, idx) => (
-                        <div key={idx} className="text-sm text-gray-600">
-                          ${tier.min.toLocaleString()} - {tier.max ? `$${tier.max.toLocaleString()}` : t('common.infinity')}: {(tier.rate * 100).toFixed(1)}%
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-2">{t('commissions.performanceBonus')}:</p>
-                    <div className="space-y-1">
-                      {structure.performance_bonuses.map((bonus, idx) => (
-                        <div key={idx} className="text-sm text-gray-600">
-                          ${bonus.threshold.toLocaleString()}: ${bonus.bonus}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 text-sm text-gray-500">
-                  <span>{t('commissions.recurringCommission')}: {(structure.recurring_commission_rate * 100).toFixed(1)}%</span>
-                  <span className="ml-4">{t('commissions.newClientBonus')}: ${structure.new_client_bonus}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Histórico de Comissões */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <h3 className="text-xl font-semibold p-6 border-b">{t('commissions.history')}</h3>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.name')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('commissions.dealSize')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('commissions.commissionAmount')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.date')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.status')}</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {commissions.map((commission) => {
-              const user = users.find(u => u.id === commission.user_id)
-              return (
-                <tr key={commission.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {user?.name || t('common.na')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${commission.deal_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
-                    ${commission.commission_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(commission.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      commission.status === 'paid' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {commission.status === 'paid' ? t('commissions.paid') : t('commissions.pending')}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        {commissions.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            {t('commissions.noCommissions')}
-          </div>
-        )}
-      </div>
-
-      {/* Modal de Calculadora */}
-      <Modal
-        isOpen={showCalculator}
-        onClose={() => {
-          setShowCalculator(false)
-          setCalculationResult(null)
-          setCalculatorData({ deal_value: '', structure_id: '' })
-        }}
-        title={t('commissions.calculate')}
-        size="md"
-      >
+      {/* Calculator Modal */}
+      <Modal isOpen={showCalculator} onClose={() => { setShowCalculator(false); setCalculationResult(null) }} title={t('commissions.calculate')} size="md">
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('commissions.dealSize')}</label>
-            <input
-              type="number"
-              step="0.01"
-              value={calculatorData.deal_value}
-              onChange={(e) => setCalculatorData({ ...calculatorData, deal_value: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder={t('commissions.placeholderDealValue')}
-            />
-          </div>
-          <Select
-            label={t('commissions.structure')}
-            value={calculatorData.structure_id}
+          <Input label={t('commissions.dealSize')} type="number" step="0.01" value={calculatorData.deal_value}
+            onChange={(e) => setCalculatorData({ ...calculatorData, deal_value: e.target.value })} placeholder="Enter deal value" />
+          <Select label={t('commissions.structure')} value={calculatorData.structure_id}
             onChange={(e) => setCalculatorData({ ...calculatorData, structure_id: e.target.value })}
-            options={[
-              { value: '', label: t('commissions.useDefault') },
-              ...structures.map(s => ({ value: s.id.toString(), label: s.name }))
-            ]}
-          />
-          <Button onClick={handleCalculateCommission} className="w-full">
-            {t('commissions.calculate')}
-          </Button>
-
+            options={[{ value: '', label: t('commissions.useDefault') }, ...structures.map(s => ({ value: s.id.toString(), label: s.name }))]} />
+          <Button onClick={handleCalculateCommission} className="w-full">{t('commissions.calculate')}</Button>
           {calculationResult && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium mb-3">{t('commissions.calculationResult')}</h4>
+            <div className="mt-6 p-4 bg-white/5 border border-white/10 rounded-xl">
+              <h4 className="font-medium text-white mb-3">{t('commissions.calculationResult')}</h4>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>{t('commissions.weeklyBase')}:</span>
-                  <span>${calculationResult.calculation.weekly_base.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>{t('commissions.commissionRate')}:</span>
-                  <span>{(calculationResult.calculation.commission_rate * 100).toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>{t('commissions.commissionAmount')}:</span>
-                  <span>${calculationResult.calculation.commission_amount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>{t('commissions.performanceBonus')}:</span>
-                  <span>${calculationResult.calculation.performance_bonus.toFixed(2)}</span>
-                </div>
-                <hr className="my-2" />
-                <div className="flex justify-between font-medium">
-                  <span>{t('commissions.totalAmount')}:</span>
-                  <span>${calculationResult.calculation.total_amount.toFixed(2)}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-slate-400">{t('commissions.weeklyBase')}:</span><span className="text-white">${calculationResult.calculation.weekly_base.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">{t('commissions.commissionRate')}:</span><span className="text-white">{(calculationResult.calculation.commission_rate * 100).toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">{t('commissions.commissionAmount')}:</span><span className="text-white">${calculationResult.calculation.commission_amount.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">{t('commissions.performanceBonus')}:</span><span className="text-white">${calculationResult.calculation.performance_bonus.toFixed(2)}</span></div>
+                <hr className="border-white/10 my-2" />
+                <div className="flex justify-between font-semibold"><span className="text-white">{t('commissions.totalAmount')}:</span><span className="text-emerald-400">${calculationResult.calculation.total_amount.toFixed(2)}</span></div>
               </div>
             </div>
           )}
         </div>
       </Modal>
 
-      {/* Modal de Configuração */}
-      <Modal
-        isOpen={showStructureForm}
-        onClose={() => setShowStructureForm(false)}
-        title={t('commissions.configure')}
-        size="xl"
-      >
+      {/* Structure Form Modal */}
+      <Modal isOpen={showStructureForm} onClose={() => setShowStructureForm(false)} title={t('commissions.configure')} size="xl">
         <div className="space-y-6">
-          <Input
-            label={t('common.name')}
-            value={structureForm.name}
-            onChange={(e) => setStructureForm({ ...structureForm, name: e.target.value })}
-            placeholder={t('commissions.placeholderName')}
-          />
-
+          <Input label={t('common.name')} value={structureForm.name} onChange={(e) => setStructureForm({ ...structureForm, name: e.target.value })} placeholder="Structure name" />
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={t('commissions.weeklyBase')}
-              type="number"
-              step="0.01"
-              value={structureForm.weekly_base}
-              onChange={(e) => setStructureForm({ ...structureForm, weekly_base: e.target.value })}
-            />
-            <Select
-              label={t('common.currency')}
-              value={structureForm.currency}
-              onChange={(e) => setStructureForm({ ...structureForm, currency: e.target.value })}
-              options={[
-                { value: 'USD', label: 'USD' },
-                { value: 'BRL', label: 'BRL' },
-                { value: 'EUR', label: 'EUR' }
-              ]}
-            />
+            <Input label={t('commissions.weeklyBase')} type="number" step="0.01" value={structureForm.weekly_base} onChange={(e) => setStructureForm({ ...structureForm, weekly_base: e.target.value })} />
+            <Select label={t('common.currency')} value={structureForm.currency} onChange={(e) => setStructureForm({ ...structureForm, currency: e.target.value })}
+              options={[{ value: 'USD', label: 'USD' }, { value: 'BRL', label: 'BRL' }, { value: 'EUR', label: 'EUR' }]} />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">{t('commissions.tieredCommission')}</label>
-            <div className="space-y-2">
-              {structureForm.tiered_commissions.map((tier, index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <Input
-                    placeholder={t('commissions.placeholderMin')}
-                    type="number"
-                    value={tier.min}
-                    onChange={(e) => {
-                      const newTiers = [...structureForm.tiered_commissions]
-                      newTiers[index].min = parseFloat(e.target.value) || 0
-                      setStructureForm({ ...structureForm, tiered_commissions: newTiers })
-                    }}
-                    className="w-24"
-                  />
-                  <span>-</span>
-                  <Input
-                    placeholder={t('commissions.placeholderMax')}
-                    type="number"
-                    value={tier.max || ''}
-                    onChange={(e) => {
-                      const newTiers = [...structureForm.tiered_commissions]
-                      newTiers[index].max = e.target.value ? parseFloat(e.target.value) : null
-                      setStructureForm({ ...structureForm, tiered_commissions: newTiers })
-                    }}
-                    className="w-24"
-                  />
-                  <Input
-                    placeholder={t('commissions.placeholderRate')}
-                    type="number"
-                    step="0.001"
-                    value={tier.rate * 100}
-                    onChange={(e) => {
-                      const newTiers = [...structureForm.tiered_commissions]
-                      newTiers[index].rate = (parseFloat(e.target.value) || 0) / 100
-                      setStructureForm({ ...structureForm, tiered_commissions: newTiers })
-                    }}
-                    className="w-20"
-                  />
-                  <span>%</span>
-                  {structureForm.tiered_commissions.length > 1 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const newTiers = structureForm.tiered_commissions.filter((_, i) => i !== index)
-                        setStructureForm({ ...structureForm, tiered_commissions: newTiers })
-                      }}
-                    >
-                      ✕
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setStructureForm({
-                    ...structureForm,
-                    tiered_commissions: [...structureForm.tiered_commissions, { min: 0, max: null, rate: 0.05 }]
-                  })
-                }}
-              >
-                + {t('common.add')} {t('commissions.tier')}
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">{t('commissions.performanceBonus')}</label>
-            <div className="space-y-2">
-              {structureForm.performance_bonuses.map((bonus, index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <span>{t('commissions.threshold')}:</span>
-                  <Input
-                    type="number"
-                    value={bonus.threshold}
-                    onChange={(e) => {
-                      const newBonuses = [...structureForm.performance_bonuses]
-                      newBonuses[index].threshold = parseFloat(e.target.value) || 0
-                      setStructureForm({ ...structureForm, performance_bonuses: newBonuses })
-                    }}
-                    className="w-32"
-                  />
-                  <span>{t('commissions.bonus')}:</span>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={bonus.bonus}
-                    onChange={(e) => {
-                      const newBonuses = [...structureForm.performance_bonuses]
-                      newBonuses[index].bonus = parseFloat(e.target.value) || 0
-                      setStructureForm({ ...structureForm, performance_bonuses: newBonuses })
-                    }}
-                    className="w-32"
-                  />
-                  {structureForm.performance_bonuses.length > 1 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const newBonuses = structureForm.performance_bonuses.filter((_, i) => i !== index)
-                        setStructureForm({ ...structureForm, performance_bonuses: newBonuses })
-                      }}
-                    >
-                      ✕
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setStructureForm({
-                    ...structureForm,
-                    performance_bonuses: [...structureForm.performance_bonuses, { threshold: 10000, bonus: 150 }]
-                  })
-                }}
-              >
-                + {t('common.add')} {t('commissions.bonus')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <Input
-              label={t('commissions.recurringCommission')}
-              type="number"
-              step="0.001"
-              value={parseFloat(structureForm.recurring_commission_rate) * 100}
-              onChange={(e) => setStructureForm({
-                ...structureForm,
-                recurring_commission_rate: (parseFloat(e.target.value) || 0) / 100
-              })}
-            />
-            <Input
-              label={t('commissions.newClientBonus')}
-              type="number"
-              step="0.01"
-              value={structureForm.new_client_bonus}
-              onChange={(e) => setStructureForm({ ...structureForm, new_client_bonus: e.target.value })}
-            />
-            <Input
-              label={t('commissions.newClientThreshold')}
-              type="number"
-              value={structureForm.new_client_threshold}
-              onChange={(e) => setStructureForm({ ...structureForm, new_client_threshold: e.target.value })}
-            />
-          </div>
-
           <div className="flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowStructureForm(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button onClick={handleCreateStructure}>
-              {t('commissions.createStructure')}
-            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowStructureForm(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleCreateStructure}>{t('commissions.createStructure')}</Button>
           </div>
         </div>
       </Modal>
     </div>
   )
 }
-
