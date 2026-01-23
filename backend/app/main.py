@@ -7,7 +7,6 @@ from app.api import (
     external, commissions, quote_requests, notifications, ai, templates, 
     goals, ai_actions, ai_config, ai_chat, lead_analysis, webhooks, 
     ai_public, site_orders, system_config, public_config, emails, 
-    ai_public, site_orders, system_config, public_config, emails, 
     site_customers, site_generator_config, site_files
 )
 
