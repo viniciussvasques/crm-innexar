@@ -9,7 +9,8 @@ import Button from '@/components/Button'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     Package, DollarSign, Clock, CheckCircle, Truck, AlertCircle,
-    LayoutGrid, LayoutList, Building2, MapPin, Phone, Mail, Calendar, ExternalLink, Globe
+    LayoutGrid, LayoutList, Building2, MapPin, Phone, Mail, Calendar, ExternalLink, Globe,
+    Wand2, Loader2
 } from 'lucide-react'
 
 interface SiteOrder {
@@ -128,6 +129,25 @@ export default function SiteOrdersPage() {
         orders.forEach(order => { if (grouped[order.status]) grouped[order.status].push(order) })
         return grouped
     }, [orders])
+
+    // --- Actions ---
+    const [generating, setGenerating] = useState(false)
+
+    const handleGenerateSite = async (orderId: number) => {
+        if (!confirm('Are you sure you want to trigger AI generation? This will overwrite existing files.')) return
+        setGenerating(true)
+        try {
+            await api.post(`/api/site-orders/${orderId}/build`)
+            toast.success('Site generation started successfully!')
+            loadOrders()
+            // Optional: Close modal or refresh check
+        } catch (error: any) {
+            console.error(error)
+            toast.error(error.response?.data?.detail || 'Failed to start generation')
+        } finally {
+            setGenerating(false)
+        }
+    }
 
     if (loading) {
         return (
@@ -350,11 +370,22 @@ export default function SiteOrdersPage() {
                                 </div>
                             </div>
                             <div className="flex gap-2">
+                                {(selectedOrder.status === 'paid' || selectedOrder.status === 'building') && selectedOrder.onboarding && (
+                                    <Button
+                                        onClick={() => handleGenerateSite(selectedOrder.id)}
+                                        isLoading={generating}
+                                        className="bg-purple-600 hover:bg-purple-700"
+                                    >
+                                        <Wand2 className="w-4 h-4 mr-2" />
+                                        Generate Site with AI
+                                    </Button>
+                                )}
+
                                 {selectedOrder.status === 'paid' && (
-                                    <Button onClick={() => handleStatusUpdate(selectedOrder.id, 'building')}>Start Building</Button>
+                                    <Button variant="secondary" onClick={() => handleStatusUpdate(selectedOrder.id, 'building')}>Start Manually</Button>
                                 )}
                                 {selectedOrder.status === 'building' && (
-                                    <Button onClick={() => handleStatusUpdate(selectedOrder.id, 'review')}>Send for Review</Button>
+                                    <Button variant="secondary" onClick={() => handleStatusUpdate(selectedOrder.id, 'review')}>Send for Review</Button>
                                 )}
                                 {selectedOrder.status === 'review' && (
                                     <Button onClick={() => handleStatusUpdate(selectedOrder.id, 'delivered')}>Mark Delivered</Button>

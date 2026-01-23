@@ -21,20 +21,20 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
   }
 
   return (
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
+    <div
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
-      <div 
-        className={`bg-white rounded-lg shadow-xl ${sizeClasses[size]} w-full max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200`}
+      <div
+        className={`bg-slate-900 border border-white/10 rounded-xl shadow-2xl ${sizeClasses[size]} w-full max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
+        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+          <h3 className="text-xl font-semibold text-white">{title}</h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-slate-400 hover:text-white transition-colors"
             aria-label="Fechar"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42,9 +42,9 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
             </svg>
           </button>
         </div>
-        
+
         {/* Content */}
-        <div className="px-6 py-4 overflow-y-auto flex-1">
+        <div className="px-6 py-4 overflow-y-auto flex-1 text-slate-300">
           {children}
         </div>
       </div>
