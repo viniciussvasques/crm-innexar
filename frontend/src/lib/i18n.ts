@@ -1,4 +1,5 @@
 import { Language } from '@/types'
+export type { Language }
 import ptTranslations from './i18n/pt'
 import enTranslations from './i18n/en'
 import esTranslations from './i18n/es'

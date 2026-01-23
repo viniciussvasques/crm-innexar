@@ -412,7 +412,6 @@ export default {
     email: 'Email',
     actions: 'Acciones',
     status: 'Estado',
-    actions: 'Acciones',
     date: 'Fecha',
     value: 'Valor',
     type: 'Tipo',

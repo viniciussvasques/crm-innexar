@@ -161,7 +161,7 @@ export default function TemplatesPage() {
               <h4 className="font-medium text-white">{t('templates.fillVariables')}</h4>
               {selectedTemplate.variables.map((variable) => (
                 <Input key={variable} label={variable.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} value={formData[variable] || ''}
-                  onChange={(e) => setFormData({ ...formData, [variable]: e.target.value })} placeholder={t('templates.enterVariable', { variable })} />
+                  onChange={(e) => setFormData({ ...formData, [variable]: e.target.value })} placeholder={`${t('templates.enterVariable').replace('{variable}', variable)}`} />
               ))}
             </div>
             <div className="flex justify-end gap-3">
