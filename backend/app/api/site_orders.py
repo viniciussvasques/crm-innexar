@@ -328,7 +328,34 @@ async def update_order_status(
     return order
 
 
+@router.post("/{order_id}/build")
+async def trigger_build(
+    order_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Dispara a geração do site via IA"""
+    order = await db.get(SiteOrder, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if not order.onboarding:
+        raise HTTPException(status_code=400, detail="Onboarding not completed")
+    
+    # Atualiza status para em geração
+    order.status = SiteOrderStatus.GENERATING
+    await db.commit()
+    
+    # Executa geração em background
+    service = SiteGeneratorService(db)
+    background_tasks.add_task(service.generate_site, order_id)
+    
+    return {"message": "Build started", "order_id": order_id}
+
+
 # ============== Onboarding Endpoints ==============
+
 
 @router.post("/{order_id}/onboarding")
 async def submit_onboarding(
