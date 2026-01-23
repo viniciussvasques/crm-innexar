@@ -158,8 +158,11 @@ async def get_orders(
     if not customer.order_id:
         return {"orders": [], "customer": {"id": customer.id, "email": customer.email}}
     
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(SiteOrder).where(SiteOrder.id == customer.order_id)
+        select(SiteOrder)
+        .options(selectinload(SiteOrder.onboarding))
+        .where(SiteOrder.id == customer.order_id)
     )
     order = result.scalar_one_or_none()
     
