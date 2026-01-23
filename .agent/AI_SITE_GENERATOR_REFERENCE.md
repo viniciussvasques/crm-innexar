@@ -135,6 +135,27 @@ site-innexar/src/app/api/
 
 ---
 
+## 🖥️ Visual IDE
+
+### Componentes Existentes
+| Arquivo | Função |
+|---------|-------|
+| `VisualEditor/index.tsx` | Componente principal com sidebar, editor, preview |
+| `VisualEditor/FileTree.tsx` | Navegação de arquivos |
+| `VisualEditor/CodeEditor.tsx` | Editor Monaco |
+| `app/projects/[id]/ide/page.tsx` | Página `/projects/{id}/ide` |
+
+### Backend de Arquivos
+- **Endpoint**: `GET/POST /api/projects/{project_id}/files`
+- **Diretório**: `generated_sites/project_{project_id}/`
+
+### ✅ Problema Resolvido
+- **Generator agora salva em**: `generated_sites/project_{order.id}/`
+- **IDE busca em**: `generated_sites/project_{project_id}/`
+- **Commit**: (pendente)
+
+---
+
 ## 🚧 Pendências
 
 - [x] ~~Auto-trigger IA após onboarding~~ ✅ IMPLEMENTADO

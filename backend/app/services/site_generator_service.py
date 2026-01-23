@@ -62,8 +62,8 @@ class SiteGeneratorService:
             project_data = json.loads(content)
             
             # 5. Write to Disk
-            # Using the ID as the folder name
-            target_dir = os.path.abspath(os.path.join(os.getcwd(), "generated_sites", str(order.id)))
+            # Using project_{id} format to match IDE expectations (site_files.py)
+            target_dir = os.path.abspath(os.path.join(os.getcwd(), "generated_sites", f"project_{order.id}"))
             os.makedirs(target_dir, exist_ok=True)
             
             for file in project_data.get("files", []):
