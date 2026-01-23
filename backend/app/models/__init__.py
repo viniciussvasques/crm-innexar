@@ -15,6 +15,10 @@ from app.models.site_order import (
 )
 from app.models.system_config import SystemConfig, DEFAULT_CONFIGS
 from app.models.chat_session import ChatSession, ChatMessage
+from app.models.support_ticket import (
+    SupportTicket, TicketMessage, CustomerNotification,
+    TicketStatus, TicketPriority
+)
 
 __all__ = [
     "User", "Contact", "Opportunity", "Activity", 
@@ -26,8 +30,11 @@ __all__ = [
     "SiteOrder", "SiteOrderStatus", "SiteOnboarding", "SiteAddon",
     "SiteOrderAddon", "SiteTemplate", "SiteNiche", "SiteTone", "SiteCTA",
     "SystemConfig", "DEFAULT_CONFIGS",
-    "ChatSession", "ChatMessage"
+    "ChatSession", "ChatMessage",
+    "SupportTicket", "TicketMessage", "CustomerNotification",
+    "TicketStatus", "TicketPriority"
 ]
+
 
 
 

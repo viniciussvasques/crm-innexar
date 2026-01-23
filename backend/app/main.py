@@ -56,6 +56,14 @@ app.include_router(site_customers.router, prefix="/api", tags=["site-customers"]
 from app.api.customer_auth import router as customer_auth_router
 app.include_router(customer_auth_router, prefix="/api", tags=["customer-auth"])
 
+# Support Tickets (customer-facing, uses customer-auth prefix)
+from app.api.support_tickets import router as support_tickets_router
+app.include_router(support_tickets_router, prefix="/api/customer-auth", tags=["support-tickets"])
+
+# Admin Tickets (workspace, requires staff auth)
+from app.api.admin_tickets import router as admin_tickets_router
+app.include_router(admin_tickets_router, prefix="/api/tickets", tags=["admin-tickets"])
+
 
 @app.on_event("startup")
 async def startup_event():
