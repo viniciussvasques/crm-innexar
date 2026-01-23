@@ -10,6 +10,11 @@ import Button from '@/components/Button'
 import Input from '@/components/Input'
 import Select from '@/components/Select'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Users, Search, Filter, Plus, BarChart3, Briefcase,
+  Mail, Phone, Building2, ChevronRight, Sparkles, X
+} from 'lucide-react'
 
 export default function ContactsPage() {
   const router = useRouter()
@@ -53,8 +58,7 @@ export default function ContactsPage() {
     try {
       const response = await api.get<Contact[]>('/api/contacts/')
       setContacts(response.data)
-      
-      // Carregar análises para leads (apenas se existirem)
+
       const leadContacts = response.data.filter(c => c.status === 'lead')
       const analysesData: Record<number, any> = {}
       for (const contact of leadContacts) {
@@ -64,7 +68,6 @@ export default function ContactsPage() {
             analysesData[contact.id] = analysisResponse.data
           }
         } catch (error: any) {
-          // Análise não existe ainda (404) ou outro erro - ignorar silenciosamente
           if (error.response?.status !== 404) {
             console.warn(`Erro ao carregar análise para contato ${contact.id}:`, error)
           }
@@ -95,26 +98,14 @@ export default function ContactsPage() {
       await api.post('/api/contacts/', formData)
       setShowForm(false)
       const wasLead = formData.status === 'lead'
-      setFormData({ 
-        name: '', 
-        email: '', 
-        phone: '', 
-        company: '', 
-        status: 'lead',
-        project_type: '',
-        budget_range: '',
-        timeline: '',
-        website: '',
-        linkedin: '',
-        position: '',
-        industry: '',
-        company_size: '',
-        source: 'manual'
+      setFormData({
+        name: '', email: '', phone: '', company: '', status: 'lead',
+        project_type: '', budget_range: '', timeline: '', website: '',
+        linkedin: '', position: '', industry: '', company_size: '', source: 'manual'
       })
-      
-      // Recarregar contatos (a análise será iniciada automaticamente pelo backend se for lead)
+
       await loadContacts()
-      
+
       if (wasLead) {
         toast.success(t('contacts.created') + ' ' + t('contacts.analysisWillStart'))
       } else {
@@ -135,11 +126,9 @@ export default function ContactsPage() {
       setAnalysis(response.data)
     } catch (error: any) {
       if (error.response?.status === 404) {
-        // Análise não existe, tentar iniciar
         try {
           await api.post(`/api/lead-analysis/${contactId}`)
           toast.success(t('contacts.analysisStarted'))
-          // Aguardar um pouco e tentar novamente
           setTimeout(async () => {
             try {
               const retryResponse = await api.get(`/api/lead-analysis/${contactId}`)
@@ -162,88 +151,134 @@ export default function ContactsPage() {
     }
   }
 
-  // Filtros e busca
   const filteredContacts = useMemo(() => {
     return contacts.filter(contact => {
-      const matchesSearch = !searchTerm || 
+      const matchesSearch = !searchTerm ||
         contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (contact.email && contact.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (contact.company && contact.company.toLowerCase().includes(searchTerm.toLowerCase()))
-      
+
       const matchesStatus = statusFilter === 'all' || contact.status === statusFilter
-      
+
       return matchesSearch && matchesStatus
     })
   }, [contacts, searchTerm, statusFilter])
 
+  // Stats
+  const stats = useMemo(() => ({
+    total: contacts.length,
+    leads: contacts.filter(c => c.status === 'lead').length,
+    prospects: contacts.filter(c => c.status === 'prospect').length,
+    clients: contacts.filter(c => c.status === 'client').length
+  }), [contacts])
+
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-12 bg-gray-100 rounded animate-pulse"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-white/10 rounded-lg w-48"></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-24 bg-white/5 rounded-xl"></div>
             ))}
           </div>
+          <div className="h-96 bg-white/5 rounded-xl"></div>
         </div>
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="mb-6 flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-gray-900">{t('contacts.title')}</h2>
-        <Button onClick={() => setShowForm(true)}>
-          + {t('contacts.new')}
-        </Button>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="p-4 lg:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-white flex items-center gap-3">
+              <Users className="w-8 h-8 text-blue-400" />
+              {t('contacts.title')}
+            </h1>
+            <p className="text-slate-400 mt-1">{t('contacts.subtitle') || 'Manage your contacts and leads'}</p>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-shadow"
+          >
+            <Plus className="w-5 h-5" />
+            {t('contacts.new')}
+          </motion.button>
+        </div>
 
-      {/* Cards de Análise Disponível */}
-      {contacts.filter(c => 
-        c.status === 'lead' && 
-        analyses[c.id]?.analysis_status === 'completed' &&
-        !opportunitiesCreated.has(c.id)
-      ).length > 0 && (
-        <div className="mb-6 space-y-3">
-          {contacts
-            .filter(c => 
-              c.status === 'lead' && 
-              analyses[c.id]?.analysis_status === 'completed' &&
-              !opportunitiesCreated.has(c.id)
-            )
-            .map(contact => (
-              <div
-                key={contact.id}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg shadow-lg p-4 text-white animate-pulse cursor-pointer hover:shadow-xl transition-all transform hover:scale-[1.02]"
-                onClick={() => handleViewAnalysis(contact.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-2xl">📊</span>
-                      <h3 className="font-bold text-lg">{t('contacts.analysisReady')} - {contact.name}</h3>
-                    </div>
-                    <p className="text-blue-100 text-sm">{contact.company || contact.email}</p>
-                    {analyses[contact.id]?.opportunity_score && (
-                      <div className="mt-2 flex items-center gap-4">
-                        <span className="text-sm">
-                          {t('contacts.opportunityScore')}: <span className="font-bold text-xl">{analyses[contact.id].opportunity_score}/100</span>
-                        </span>
-                        {analyses[contact.id]?.analysis_metadata?.potential_value && (
-                          <span className="text-sm">
-                            {t('contacts.potentialValue')}: <span className="font-bold">R$ {Number(analyses[contact.id].analysis_metadata.potential_value).toLocaleString('pt-BR')}</span>
-                          </span>
-                        )}
-                      </div>
-                    )}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: t('common.total'), value: stats.total, color: 'blue', icon: Users },
+            { label: t('contacts.lead'), value: stats.leads, color: 'purple', icon: Sparkles },
+            { label: t('contacts.prospect'), value: stats.prospects, color: 'amber', icon: BarChart3 },
+            { label: t('contacts.client'), value: stats.clients, color: 'emerald', icon: Briefcase }
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/[0.08] transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">{stat.label}</p>
+                  <p className="text-2xl font-bold text-white mt-1">{stat.value}</p>
+                </div>
+                <div className={`w-10 h-10 rounded-lg bg-${stat.color}-500/20 flex items-center justify-center`}>
+                  <stat.icon className={`w-5 h-5 text-${stat.color}-400`} />
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Alert Cards for Analysis Ready */}
+        <AnimatePresence>
+          {contacts.filter(c =>
+            c.status === 'lead' &&
+            analyses[c.id]?.analysis_status === 'completed' &&
+            !opportunitiesCreated.has(c.id)
+          ).map(contact => (
+            <motion.div
+              key={contact.id}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-4 cursor-pointer hover:border-blue-500/50 transition-colors"
+              onClick={() => handleViewAnalysis(contact.id)}
+            >
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-white" />
                   </div>
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <Button variant="secondary" size="sm" onClick={() => handleViewAnalysis(contact.id)}>
-                      {t('contacts.viewFullAnalysis')}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={() => {
+                  <div>
+                    <h3 className="font-semibold text-white">{t('contacts.analysisReady')} - {contact.name}</h3>
+                    <p className="text-sm text-slate-400">{contact.company || contact.email}</p>
+                  </div>
+                  {analyses[contact.id]?.opportunity_score && (
+                    <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm font-medium">
+                      Score: {analyses[contact.id].opportunity_score}/100
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleViewAnalysis(contact.id) }}
+                    className="px-3 py-1.5 bg-white/10 text-white rounded-lg text-sm hover:bg-white/20 transition-colors"
+                  >
+                    {t('contacts.viewFullAnalysis')}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
                       setSelectedContactId(contact.id)
                       setOpportunityFormData({
                         name: `${contact.company || contact.name} - Oportunidade`,
@@ -252,46 +287,217 @@ export default function ContactsPage() {
                         probability: analyses[contact.id]?.opportunity_score || 50
                       })
                       setShowCreateOpportunity(true)
-                    }}>
-                      + {t('contacts.createOpportunity')}
-                    </Button>
-                  </div>
+                    }}
+                    className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg text-sm hover:opacity-90 transition-opacity"
+                  >
+                    + {t('contacts.createOpportunity')}
+                  </button>
                 </div>
               </div>
-            ))}
-        </div>
-      )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
 
-      {/* Busca e Filtros */}
-      <div className="mb-6 bg-white rounded-lg shadow p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.search')}</label>
-            <input
-              type="text"
-              placeholder={`${t('common.name')}, ${t('common.email')} ou ${t('common.company')}...`}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+        {/* Search and Filters */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder={`${t('common.search')}...`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500/50 transition-colors appearance-none cursor-pointer"
+              >
+                <option value="all" className="bg-slate-900">{t('common.all')}</option>
+                <option value="lead" className="bg-slate-900">{t('contacts.lead')}</option>
+                <option value="prospect" className="bg-slate-900">{t('contacts.prospect')}</option>
+                <option value="client" className="bg-slate-900">{t('contacts.client')}</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.status')}</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">{t('common.all')}</option>
-              <option value="lead">{t('contacts.lead')}</option>
-              <option value="prospect">{t('contacts.prospect')}</option>
-              <option value="client">{t('contacts.client')}</option>
-            </select>
+        </div>
+
+        {/* Contacts List */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden">
+          {/* Desktop Table */}
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.name')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.email')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.phone')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.company')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.status')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">{t('common.actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredContacts.map((contact, i) => (
+                  <motion.tr
+                    key={contact.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}
+                    className="hover:bg-white/[0.03] transition-colors"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
+                          {contact.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-white font-medium">{contact.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-400">{contact.email || '-'}</td>
+                    <td className="px-6 py-4 text-slate-400">{contact.phone || '-'}</td>
+                    <td className="px-6 py-4 text-slate-400">{contact.company || '-'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${contact.status === 'lead' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                          contact.status === 'prospect' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                            'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                        {contact.status === 'lead' ? t('contacts.lead') :
+                          contact.status === 'prospect' ? t('contacts.prospect') :
+                            t('contacts.client')}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        {contact.status === 'lead' && (
+                          <>
+                            <button
+                              onClick={() => handleViewAnalysis(contact.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 text-white rounded-lg text-sm hover:bg-white/20 transition-colors"
+                            >
+                              <BarChart3 className="w-4 h-4" />
+                              {t('contacts.viewAnalysis')}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedContactId(contact.id)
+                                setOpportunityFormData({
+                                  name: `${contact.company || contact.name} - Oportunidade`,
+                                  value: analyses[contact.id]?.analysis_metadata?.potential_value?.toString() || '',
+                                  stage: 'qualificacao',
+                                  probability: analyses[contact.id]?.opportunity_score || 50
+                                })
+                                setShowCreateOpportunity(true)
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg text-sm hover:opacity-90 transition-opacity"
+                            >
+                              <Plus className="w-4 h-4" />
+                              {t('contacts.createOpportunity')}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+
+          {/* Mobile Cards */}
+          <div className="lg:hidden divide-y divide-white/5">
+            {filteredContacts.map((contact, i) => (
+              <motion.div
+                key={contact.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.05 }}
+                className="p-4 hover:bg-white/[0.03] transition-colors"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-lg">
+                      {contact.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="text-white font-medium">{contact.name}</h3>
+                      <p className="text-slate-400 text-sm">{contact.company || 'No company'}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${contact.status === 'lead' ? 'bg-purple-500/20 text-purple-300' :
+                      contact.status === 'prospect' ? 'bg-amber-500/20 text-amber-300' :
+                        'bg-emerald-500/20 text-emerald-300'
+                    }`}>
+                    {contact.status}
+                  </span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {contact.email && (
+                    <div className="flex items-center gap-2 text-slate-400">
+                      <Mail className="w-4 h-4" />
+                      <span>{contact.email}</span>
+                    </div>
+                  )}
+                  {contact.phone && (
+                    <div className="flex items-center gap-2 text-slate-400">
+                      <Phone className="w-4 h-4" />
+                      <span>{contact.phone}</span>
+                    </div>
+                  )}
+                </div>
+                {contact.status === 'lead' && (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => handleViewAnalysis(contact.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-lg text-sm"
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      {t('contacts.viewAnalysis')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedContactId(contact.id)
+                        setShowCreateOpportunity(true)
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Opportunity
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Empty States */}
+          {filteredContacts.length === 0 && contacts.length > 0 && (
+            <div className="p-12 text-center">
+              <Search className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400">{t('contacts.noFiltered')}</p>
+            </div>
+          )}
+          {contacts.length === 0 && (
+            <div className="p-12 text-center">
+              <Users className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400 mb-4">{t('contacts.noContacts')}</p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg"
+              >
+                {t('contacts.new')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Modal de Criação */}
+      {/* Modals */}
       <Modal
         isOpen={showForm}
         onClose={() => setShowForm(false)}
@@ -337,108 +543,14 @@ export default function ContactsPage() {
             ]}
           />
           <div className="flex justify-end gap-3 mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowForm(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit">
-              {t('common.save')}
-            </Button>
+            <Button type="submit">{t('common.save')}</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Lista de Contatos */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('common.name')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('common.email')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('common.phone')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('common.company')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('common.status')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredContacts.map((contact) => (
-              <tr key={contact.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {contact.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {contact.email || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {contact.phone || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {contact.company || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full capitalize ${
-                    contact.status === 'lead' ? 'bg-blue-100 text-blue-800' :
-                    contact.status === 'prospect' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {contact.status === 'lead' ? t('contacts.lead') :
-                     contact.status === 'prospect' ? t('contacts.prospect') :
-                     t('contacts.client')}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex gap-2">
-                    {contact.status === 'lead' && (
-                      <>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleViewAnalysis(contact.id)}
-                        >
-                          {analyses[contact.id]?.analysis_status === 'completed' ? '📊 ' : ''}
-                          {t('contacts.viewAnalysis')}
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedContactId(contact.id)
-                            setOpportunityFormData({
-                              name: `${contact.company || contact.name} - Oportunidade`,
-                              value: analyses[contact.id]?.analysis_metadata?.potential_value?.toString() || '',
-                              stage: 'qualificacao',
-                              probability: analyses[contact.id]?.opportunity_score || 50
-                            })
-                            setShowCreateOpportunity(true)
-                          }}
-                        >
-                          + {t('contacts.createOpportunity')}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filteredContacts.length === 0 && contacts.length > 0 && (
-          <div className="p-8 text-center text-gray-500">
-            {t('contacts.noFiltered')}
-          </div>
-        )}
-        {contacts.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            {t('contacts.noContacts')}
-          </div>
-        )}
-      </div>
-
-      {/* Modal de Análise */}
       <Modal
         isOpen={showAnalysis}
         onClose={() => {
@@ -451,109 +563,48 @@ export default function ContactsPage() {
       >
         {loadingAnalysis ? (
           <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">{t('contacts.loadingAnalysis')}</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-slate-400">{t('contacts.loadingAnalysis')}</p>
           </div>
         ) : analysis ? (
           <div className="space-y-6">
             {analysis.analysis_status === 'pending' && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-yellow-800">{t('contacts.analysisPending')}</p>
-              </div>
-            )}
-            {analysis.analysis_status === 'error' && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-red-800">{t('contacts.analysisError')}</p>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+                <p className="text-amber-300">{t('contacts.analysisPending')}</p>
               </div>
             )}
             {analysis.analysis_status === 'completed' && (
               <>
                 {analysis.opportunity_score !== null && (
-                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-4 text-white">
+                  <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-6">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-lg">{t('contacts.opportunityScore')}</span>
-                      <span className="text-4xl font-bold">{analysis.opportunity_score}/100</span>
+                      <span className="text-slate-300 font-medium">{t('contacts.opportunityScore')}</span>
+                      <span className="text-4xl font-bold text-white">{analysis.opportunity_score}/100</span>
                     </div>
-                    {analysis.analysis_metadata?.potential_value && (
-                      <div className="mt-2 text-blue-100">
-                        {t('contacts.potentialValue')}: <span className="font-bold text-white">R$ {Number(analysis.analysis_metadata.potential_value).toLocaleString('pt-BR')}</span>
-                      </div>
-                    )}
                   </div>
                 )}
                 {analysis.company_info && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.companyInfo')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.company_info}</p>
-                  </div>
-                )}
-                {analysis.analysis_metadata?.digital_presence && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.digitalPresence')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.analysis_metadata.digital_presence}</p>
-                  </div>
-                )}
-                {analysis.market_analysis && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.marketAnalysis')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.market_analysis}</p>
-                  </div>
-                )}
-                {analysis.financial_insights && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.financialInsights')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.financial_insights}</p>
-                  </div>
-                )}
-                {analysis.analysis_metadata?.lead_profile && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.leadProfile')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.analysis_metadata.lead_profile}</p>
-                  </div>
-                )}
-                {analysis.analysis_metadata?.business_potential && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.businessPotential')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.analysis_metadata.business_potential}</p>
+                  <div className="bg-white/5 rounded-lg p-4">
+                    <h3 className="font-semibold text-white mb-2">{t('contacts.companyInfo')}</h3>
+                    <p className="text-slate-300 whitespace-pre-wrap">{analysis.company_info}</p>
                   </div>
                 )}
                 {analysis.recommendations && (
-                  <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                    <h3 className="font-semibold text-green-900 mb-2 text-lg">{t('contacts.recommendations')}</h3>
-                    <p className="text-green-800 whitespace-pre-wrap leading-relaxed">{analysis.recommendations}</p>
-                  </div>
-                )}
-                {analysis.risk_assessment && (
-                  <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
-                    <h3 className="font-semibold text-yellow-900 mb-2 text-lg">{t('contacts.riskAssessment')}</h3>
-                    <p className="text-yellow-800 whitespace-pre-wrap leading-relaxed">{analysis.risk_assessment}</p>
-                  </div>
-                )}
-                {analysis.analysis_metadata?.sources && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 text-lg">{t('contacts.sources')}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{analysis.analysis_metadata.sources}</p>
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
+                    <h3 className="font-semibold text-emerald-300 mb-2">{t('contacts.recommendations')}</h3>
+                    <p className="text-emerald-200 whitespace-pre-wrap">{analysis.recommendations}</p>
                   </div>
                 )}
               </>
             )}
           </div>
         ) : (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-slate-400">
             <p>{t('contacts.noAnalysis')}</p>
-            {selectedContactId && (
-              <Button
-                className="mt-4"
-                onClick={() => handleViewAnalysis(selectedContactId)}
-              >
-                {t('contacts.startAnalysis')}
-              </Button>
-            )}
           </div>
         )}
       </Modal>
 
-      {/* Modal de Criar Oportunidade */}
       <Modal
         isOpen={showCreateOpportunity}
         onClose={() => {
@@ -567,7 +618,7 @@ export default function ContactsPage() {
           e.preventDefault()
           try {
             if (!selectedContactId) return
-            
+
             await api.post('/api/opportunities/', {
               name: opportunityFormData.name,
               contact_id: selectedContactId,
@@ -575,14 +626,12 @@ export default function ContactsPage() {
               stage: opportunityFormData.stage,
               probability: opportunityFormData.probability
             })
-            
+
             toast.success(t('contacts.opportunityCreated'))
-            
-            // Marcar que oportunidade foi criada para este contato
             if (selectedContactId) {
               setOpportunitiesCreated(prev => new Set([...prev, selectedContactId]))
             }
-            
+
             setShowCreateOpportunity(false)
             router.push('/opportunities')
           } catch (error) {
@@ -615,25 +664,11 @@ export default function ContactsPage() {
               { value: 'fechado', label: t('opportunities.fechado') }
             ]}
           />
-          <Input
-            label={t('opportunities.probability')}
-            type="number"
-            min="0"
-            max="100"
-            value={opportunityFormData.probability}
-            onChange={(e) => setOpportunityFormData({ ...opportunityFormData, probability: parseInt(e.target.value) || 0 })}
-          />
           <div className="flex justify-end gap-3 mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowCreateOpportunity(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setShowCreateOpportunity(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit">
-              {t('common.save')}
-            </Button>
+            <Button type="submit">{t('common.save')}</Button>
           </div>
         </form>
       </Modal>

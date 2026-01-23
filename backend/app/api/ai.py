@@ -680,7 +680,11 @@ async def _execute_ai_action(action_string: str, db: AsyncSession, current_user:
                     if '.' in value:
                         args[key] = float(value)
                     else:
-                        args[key] = int(value)
+                        # Keep phone as string
+                        if key == 'phone':
+                            args[key] = value
+                        else:
+                            args[key] = int(value)
                 else:
                     args[key] = value
 
