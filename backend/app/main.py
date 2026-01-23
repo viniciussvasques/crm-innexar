@@ -52,6 +52,10 @@ app.include_router(public_config.router, prefix="/api", tags=["public-config"])
 app.include_router(emails.router, tags=["emails"])
 app.include_router(site_customers.router, prefix="/api", tags=["site-customers"])
 
+# New clean customer auth module
+from app.api.customer_auth import router as customer_auth_router
+app.include_router(customer_auth_router, prefix="/api", tags=["customer-auth"])
+
 
 @app.on_event("startup")
 async def startup_event():
