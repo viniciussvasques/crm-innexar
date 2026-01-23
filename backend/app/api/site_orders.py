@@ -347,9 +347,15 @@ async def trigger_build(
     order.status = SiteOrderStatus.GENERATING
     await db.commit()
     
+    # Wrapper function for background task with its own session
+    async def run_generation(order_id: int):
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            service = SiteGeneratorService(session)
+            await service.generate_site(order_id)
+    
     # Executa geração em background
-    service = SiteGeneratorService(db)
-    background_tasks.add_task(service.generate_site, order_id)
+    background_tasks.add_task(run_generation, order_id)
     
     return {"message": "Build started", "order_id": order_id}
 
@@ -482,9 +488,15 @@ async def submit_onboarding(
 
     await db.commit()
     
+    # Wrapper function for background task with its own session
+    async def run_generation(order_id_int: int):
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            service = SiteGeneratorService(session)
+            await service.generate_site(order_id_int)
+    
     # Auto-trigger AI generation in background
-    service = SiteGeneratorService(db)
-    background_tasks.add_task(service.generate_site, order.id)
+    background_tasks.add_task(run_generation, order.id)
     
     return {
         "message": "Onboarding submitted successfully", 
