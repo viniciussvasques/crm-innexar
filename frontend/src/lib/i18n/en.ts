@@ -15,6 +15,7 @@ export default {
     leaderboard: 'Leaderboard',
     aiConfig: 'AI Configuration',
     siteOrders: 'Site Orders',
+    tickets: 'Support Tickets',
     settings: 'Settings',
     analytics: 'Analytics',
     planning: 'Planning'
