@@ -1,7 +1,7 @@
 """
 Site Customer Authentication API
 """
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
@@ -171,11 +171,24 @@ async def get_current_customer(
 
 @router.get("/me/orders")
 async def get_customer_orders(
-    token: str,
+    request: Request,
+    token: str = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Get all orders for the current customer from token"""
-    payload = decode_customer_token(token)
+    # Get token from Authorization header or query param
+    auth_header = request.headers.get("Authorization")
+    actual_token = None
+    
+    if auth_header and auth_header.startswith("Bearer "):
+        actual_token = auth_header.replace("Bearer ", "")
+    elif token:
+        actual_token = token
+    
+    if not actual_token:
+        raise HTTPException(status_code=401, detail="Token required")
+    
+    payload = decode_customer_token(actual_token)
     customer_id = int(payload["sub"])
     
     customer = await db.get(SiteCustomer, customer_id)
