@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.models.user import User
-from app.models.ai_config import AIConfig, AIModelProvider, AIModelStatus
-from app.api.dependencies import get_current_user, get_user_role_str
+from app.models.ai_config import AIConfig, AIModelProvider, AIModelStatus, AITaskRouting
+from app.api.dependencies import get_current_user, get_user_role_str, require_admin
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -55,6 +55,21 @@ class AIConfigResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class AIRoutingResponse(BaseModel):
+    task_type: str
+    primary_config_id: Optional[int]
+    fallback_config_id: Optional[int] = None
+    temperature: float = 0.7
+    
+    class Config:
+        from_attributes = True
+
+class AIRoutingUpdate(BaseModel):
+    task_type: str
+    primary_config_id: int
+    fallback_config_id: Optional[int] = None
+    temperature: Optional[float] = 0.7
 
 # Modelos disponíveis por provider
 AVAILABLE_MODELS = {
@@ -429,6 +444,61 @@ async def delete_ai_config(
     await db.commit()
     
     return {"message": "Configuração deletada com sucesso"}
+
+# --- Task Routing Endpoints ---
+
+@router.get("/routing", response_model=List[AIRoutingResponse])
+async def get_ai_routing(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista regras de roteamento de IA"""
+    result = await db.execute(select(AITaskRouting))
+    routings = result.scalars().all()
+    return routings or []
+
+@router.post("/routing")
+async def update_ai_routing(
+    routing_data: AIRoutingUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza ou cria regra de roteamento"""
+    # Verifica se os configs existem
+    if routing_data.primary_config_id:
+        p_config = await db.get(AIConfig, routing_data.primary_config_id)
+        if not p_config:
+            raise HTTPException(status_code=404, detail="Primary config not found")
+            
+    if routing_data.fallback_config_id:
+        f_config = await db.get(AIConfig, routing_data.fallback_config_id)
+        if not f_config:
+            raise HTTPException(status_code=404, detail="Fallback config not found")
+
+    # Busca routing existente
+    result = await db.execute(
+        select(AITaskRouting).where(AITaskRouting.task_type == routing_data.task_type)
+    )
+    routing = result.scalar_one_or_none()
+    
+    if routing:
+        routing.primary_config_id = routing_data.primary_config_id
+        routing.fallback_config_id = routing_data.fallback_config_id
+        if routing_data.temperature is not None:
+            routing.temperature = routing_data.temperature
+        routing.updated_at = datetime.utcnow()
+    else:
+        routing = AITaskRouting(
+            task_type=routing_data.task_type,
+            primary_config_id=routing_data.primary_config_id,
+            fallback_config_id=routing_data.fallback_config_id,
+            temperature=routing_data.temperature or 0.7
+        )
+        db.add(routing)
+    
+    await db.commit()
+    await db.refresh(routing)
+    return routing
 
 @router.post("/{config_id}/test")
 async def test_ai_config(

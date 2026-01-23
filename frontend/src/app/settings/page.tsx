@@ -307,6 +307,9 @@ export default function SettingsPage() {
                                     <option value="anthropic">Anthropic</option>
                                     <option value="google">Google Gemini</option>
                                     <option value="ollama">Ollama (Local)</option>
+                                    <option value="grok">xAI Grok</option>
+                                    <option value="mistral">Mistral</option>
+                                    <option value="cloudflare">Cloudflare Workers AI</option>
                                 </select>
                             </div>
                             <div>
@@ -336,8 +339,73 @@ export default function SettingsPage() {
                     </div>
                 </div>
             )}
+
+            <div className="pt-6 border-t border-white/10">
+                <h3 className="text-lg font-medium text-white mb-4">Task Routing</h3>
+                <p className="text-sm text-slate-400 mb-4">Assign specific models to different system tasks.</p>
+                <div className="grid gap-4">
+                    {['coding', 'chat', 'analysis'].map(task => (
+                        <TaskRoutingRow key={task} task={task} />
+                    ))}
+                </div>
+            </div>
         </div>
     )
+
+    const TaskRoutingRow = ({ task }: { task: string }) => {
+        const [selectedId, setSelectedId] = useState<string>('')
+        const [loading, setLoading] = useState(false)
+
+        // Load initial
+        useEffect(() => {
+            api.get('/api/ai-config/routing').then(res => {
+                const route = res.data.find((r: any) => r.task_type === task)
+                if (route) setSelectedId(String(route.primary_config_id))
+            })
+        }, [task])
+
+        const handleUpdate = async (configId: string) => {
+            setSelectedId(configId)
+            setLoading(true)
+            try {
+                await api.post('/api/ai-config/routing', {
+                    task_type: task,
+                    primary_config_id: parseInt(configId)
+                })
+                toast.success(`Updated ${task} model`)
+            } catch (e) {
+                toast.error('Failed to update routing')
+            } finally {
+                setLoading(false)
+            }
+        }
+
+        const taskLabels: Record<string, string> = {
+            coding: 'Code Generation (Site Builder)',
+            chat: 'Customer Support (Chatbot)',
+            analysis: 'Data Analysis & Insights'
+        }
+
+        return (
+            <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center justify-between">
+                <div>
+                    <h4 className="font-medium text-white">{taskLabels[task] || task}</h4>
+                    <p className="text-xs text-slate-400">Select the best model for this task</p>
+                </div>
+                <select
+                    className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:border-blue-500 outline-none"
+                    value={selectedId}
+                    onChange={(e) => handleUpdate(e.target.value)}
+                    disabled={loading}
+                >
+                    <option value="">Select a Model...</option>
+                    {aiConfigs.filter(c => c.is_active).map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.model_name})</option>
+                    ))}
+                </select>
+            </div>
+        )
+    }
 
     // --- Deploy Servers Tab Logic ---
     const [loadingServers, setLoadingServers] = useState(false)
