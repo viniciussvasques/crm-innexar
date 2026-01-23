@@ -48,3 +48,18 @@ def get_token_from_request(authorization: str = None, token_param: str = None) -
     if token_param:
         return token_param
     raise HTTPException(status_code=401, detail="Token required")
+
+
+def extract_token(request, token_param: str = None) -> str:
+    """Extract JWT token from request header or query parameter"""
+    # Try Authorization header first
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header.replace("Bearer ", "")
+    
+    # Try query parameter
+    if token_param:
+        return token_param
+    
+    return None
+
