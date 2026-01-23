@@ -364,8 +364,8 @@ export default function ContactsPage() {
                     <td className="px-6 py-4 text-slate-400">{contact.company || '-'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${contact.status === 'lead' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
-                          contact.status === 'prospect' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
-                            'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        contact.status === 'prospect' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                          'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                         }`}>
                         {contact.status === 'lead' ? t('contacts.lead') :
                           contact.status === 'prospect' ? t('contacts.prospect') :
@@ -430,8 +430,8 @@ export default function ContactsPage() {
                     </div>
                   </div>
                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${contact.status === 'lead' ? 'bg-purple-500/20 text-purple-300' :
-                      contact.status === 'prospect' ? 'bg-amber-500/20 text-amber-300' :
-                        'bg-emerald-500/20 text-emerald-300'
+                    contact.status === 'prospect' ? 'bg-amber-500/20 text-amber-300' :
+                      'bg-emerald-500/20 text-emerald-300'
                     }`}>
                     {contact.status}
                   </span>
@@ -629,7 +629,7 @@ export default function ContactsPage() {
 
             toast.success(t('contacts.opportunityCreated'))
             if (selectedContactId) {
-              setOpportunitiesCreated(prev => new Set([...prev, selectedContactId]))
+              setOpportunitiesCreated(prev => new Set(Array.from(prev).concat([selectedContactId])))
             }
 
             setShowCreateOpportunity(false)
