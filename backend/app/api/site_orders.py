@@ -18,9 +18,9 @@ from app.models.site_order import (
 )
 from app.api.dependencies import get_current_user, require_admin
 from app.api.site_customers import create_customer_account
-from app.api.site_customers import create_customer_account
 from app.services.email_service import email_service
 from app.services.site_generator_service import SiteGeneratorService
+from app.services.ai_service import AIService
 
 
 router = APIRouter(prefix="/site-orders", tags=["site-orders"])
@@ -336,6 +336,14 @@ async def trigger_build(
     current_user: User = Depends(require_admin)
 ):
     """Dispara a geração do site via IA"""
+    ai_service = AIService(db)
+    validation = await ai_service.validate_task("coding")
+    if not validation.get("ok"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=validation.get("detail", "Configuração de IA inválida.")
+        )
+
     # Use selectinload to eager load onboarding and avoid MissingGreenlet
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload

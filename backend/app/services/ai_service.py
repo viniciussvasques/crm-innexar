@@ -23,8 +23,51 @@ class AIService:
         result = await self.db.execute(select(AITaskRouting).where(AITaskRouting.task_type == task_type))
         return result.scalar_one_or_none()
 
+    async def get_config(self, config_id: int) -> Optional[AIConfig]:
+        """Public helper to load a config by id."""
+        return await self._get_config(config_id)
+
     async def _get_config(self, config_id: int) -> Optional[AIConfig]:
         return await self.db.get(AIConfig, config_id)
+
+    async def validate_task(self, task_type: str) -> Dict[str, Any]:
+        """Validates that a task has routing and usable primary config."""
+        routing = await self.get_routing_for_task(task_type)
+        if not routing:
+            return {
+                "ok": False,
+                "detail": f"Nenhuma regra de roteamento encontrada para a task '{task_type}'."
+            }
+
+        primary_config = await self._get_config(routing.primary_config_id)
+        if not primary_config:
+            return {
+                "ok": False,
+                "detail": f"Configuração primária de IA ({routing.primary_config_id}) não encontrada."
+            }
+
+        provider_requires_key = primary_config.provider in {
+            "openai",
+            "anthropic",
+            "google",
+            "grok",
+            "mistral",
+            "cohere",
+        }
+
+        if provider_requires_key and not primary_config.api_key:
+            return {
+                "ok": False,
+                "detail": f"Provider '{primary_config.provider}' sem API key configurada."
+            }
+
+        if primary_config.provider == "ollama" and not primary_config.base_url:
+            return {
+                "ok": False,
+                "detail": "Provider 'ollama' sem base_url configurada (ex: http://localhost:11434)."
+            }
+
+        return {"ok": True}
 
     async def generate(self, task_type: str, prompt: str, system_instruction: str = None, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
