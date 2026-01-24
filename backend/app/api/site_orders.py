@@ -336,7 +336,16 @@ async def trigger_build(
     current_user: User = Depends(require_admin)
 ):
     """Dispara a geração do site via IA"""
-    order = await db.get(SiteOrder, order_id)
+    # Use selectinload to eager load onboarding and avoid MissingGreenlet
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    
+    result = await db.execute(
+        select(SiteOrder)
+        .options(selectinload(SiteOrder.onboarding))
+        .where(SiteOrder.id == order_id)
+    )
+    order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
