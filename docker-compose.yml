@@ -38,7 +38,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/viniciussvasques/crm-innexar/backend:latest
+    build: ./backend
     container_name: crm-backend
     restart: unless-stopped
     depends_on:
@@ -72,7 +72,7 @@ services:
       - "traefik.docker.network=fixelo_fixelo-network"
 
   frontend:
-    image: ghcr.io/viniciussvasques/crm-innexar/frontend:latest
+    build: ./frontend
     container_name: crm-frontend
     restart: unless-stopped
     depends_on:
