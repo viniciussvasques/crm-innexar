@@ -348,14 +348,21 @@ async def trigger_build(
     await db.commit()
     
     # Wrapper function for background task with its own session
-    async def run_generation(order_id: int):
+    # IMPORTANT: BackgroundTasks runs in a thread pool, so we need to use asyncio.run()
+    def run_generation_sync(order_id: int):
+        import asyncio
         from app.core.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
-            service = SiteGeneratorService(session)
-            await service.generate_site(order_id)
+        
+        async def _generate():
+            async with AsyncSessionLocal() as session:
+                service = SiteGeneratorService(session)
+                await service.generate_site(order_id)
+        
+        # Create new event loop for background thread
+        asyncio.run(_generate())
     
-    # Executa geração em background
-    background_tasks.add_task(run_generation, order_id)
+    # Executa geração em background (função síncrona)
+    background_tasks.add_task(run_generation_sync, order_id)
     
     return {"message": "Build started", "order_id": order_id}
 
@@ -489,14 +496,21 @@ async def submit_onboarding(
     await db.commit()
     
     # Wrapper function for background task with its own session
-    async def run_generation(order_id_int: int):
+    # IMPORTANT: BackgroundTasks runs in a thread pool, so we need to use asyncio.run()
+    def run_generation_sync(order_id_int: int):
+        import asyncio
         from app.core.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
-            service = SiteGeneratorService(session)
-            await service.generate_site(order_id_int)
+        
+        async def _generate():
+            async with AsyncSessionLocal() as session:
+                service = SiteGeneratorService(session)
+                await service.generate_site(order_id_int)
+        
+        # Create new event loop for background thread
+        asyncio.run(_generate())
     
-    # Auto-trigger AI generation in background
-    background_tasks.add_task(run_generation, order.id)
+    # Auto-trigger AI generation in background (função síncrona)
+    background_tasks.add_task(run_generation_sync, order.id)
     
     return {
         "message": "Onboarding submitted successfully", 
