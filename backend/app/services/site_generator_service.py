@@ -29,8 +29,16 @@ class SiteGeneratorService:
         """
         logger.info(f"Starting generation for Order #{order_id}")
         
-        # 1. Fetch Data
-        order = await self.db.get(SiteOrder, order_id)
+        # 1. Fetch Data with eager loading to avoid lazy load issues in async
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        
+        result = await self.db.execute(
+            select(SiteOrder)
+            .options(selectinload(SiteOrder.onboarding))
+            .where(SiteOrder.id == order_id)
+        )
+        order = result.scalar_one_or_none()
         if not order:
             raise ValueError("Order not found")
             
