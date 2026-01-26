@@ -10,11 +10,21 @@ from pathlib import Path
 router = APIRouter(prefix="/projects/{project_id}/files", tags=["site-files"])
 
 # Base directory for generated sites
-# In production this should be an env var
-SITES_BASE_DIR = Path(os.getenv("SITES_BASE_DIR", "./generated_sites"))
+# Use absolute path to ensure consistency with volume mount
+_SITES_BASE_DIR_STR = os.getenv("SITES_BASE_DIR", "/app/generated_sites")
+# Ensure it's always absolute
+if not os.path.isabs(_SITES_BASE_DIR_STR):
+    _SITES_BASE_DIR_STR = os.path.abspath(os.path.join("/app", _SITES_BASE_DIR_STR.lstrip("./")))
 
 def get_project_dir(project_id: int) -> Path:
-    return SITES_BASE_DIR / f"project_{project_id}"
+    """Get project directory - returns absolute path"""
+    # Construct absolute path string first
+    project_path_str = os.path.join(_SITES_BASE_DIR_STR, f"project_{project_id}")
+    # Ensure absolute (should already be, but double-check)
+    if not os.path.isabs(project_path_str):
+        project_path_str = os.path.abspath(project_path_str)
+    # Create Path from absolute string - this will be absolute
+    return Path(project_path_str)
 
 def validate_path(project_dir: Path, requested_path: str) -> Path:
     """
@@ -87,6 +97,9 @@ async def get_file_content(
 ):
     """Lê conteúdo de um arquivo"""
     project_dir = get_project_dir(project_id)
+    # Ensure absolute
+    if not project_dir.is_absolute():
+        project_dir = Path(os.path.abspath(str(project_dir)))
     full_path = validate_path(project_dir, path)
     
     if not full_path.exists() or not full_path.is_file():
@@ -110,6 +123,9 @@ async def save_file_content(
 ):
     """Salva conteúdo em um arquivo"""
     project_dir = get_project_dir(project_id)
+    # Ensure absolute
+    if not project_dir.is_absolute():
+        project_dir = Path(os.path.abspath(str(project_dir)))
     full_path = validate_path(project_dir, data.path)
     
     # Garantir que diretório pai existe

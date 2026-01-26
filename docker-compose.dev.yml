@@ -1,0 +1,160 @@
+# Docker Compose para Desenvolvimento com Hot Reload
+# Uso: docker compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: crm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-innexarcrm}
+      POSTGRES_USER: ${DB_USER:-crm_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-senha_forte_aqui}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - crm-dev-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-crm_user} -d ${DB_NAME:-innexarcrm}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    restart: unless-stopped
+    volumes:
+      - ./data/redis:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - crm-dev-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: crm-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-crm_user}:${DB_PASSWORD:-senha_forte_aqui}@postgres:5432/${DB_NAME:-innexarcrm}
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      GROK_API_KEY: ${GROK_API_KEY:-}
+      FRONTEND_URL: http://localhost:3000
+    volumes:
+      # Hot reload: monta código local no container
+      - ./backend/app:/app/app:cached
+      - ./backend/migrations:/app/migrations:cached
+    ports:
+      - "8000:8000"
+    networks:
+      - crm-dev-network
+      - fixelo_fixelo-network
+    labels:
+      - "traefik.enable=true"
+      # Router HTTP - redireciona para HTTPS
+      - "traefik.http.routers.crm-api-http-dev.rule=Host(`api.sales.innexar.app`)"
+      - "traefik.http.routers.crm-api-http-dev.entrypoints=web"
+      - "traefik.http.routers.crm-api-http-dev.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+      # Router HTTPS
+      - "traefik.http.routers.crm-api-dev.rule=Host(`api.sales.innexar.app`)"
+      - "traefik.http.routers.crm-api-dev.entrypoints=websecure"
+      - "traefik.http.routers.crm-api-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.crm-api-dev.service=crm-api-dev"
+      - "traefik.http.services.crm-api-dev.loadbalancer.server.port=8000"
+      - "traefik.docker.network=fixelo_fixelo-network"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: crm-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: https://api.sales.innexar.app
+      BACKEND_URL: http://backend:8000
+      WATCHPACK_POLLING: "true"
+    volumes:
+      # Hot reload: monta código local no container
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - ./frontend/next.config.js:/app/next.config.js:cached
+    ports:
+      - "3000:3000"
+    networks:
+      - crm-dev-network
+      - fixelo_fixelo-network
+    labels:
+      - "traefik.enable=true"
+      # Router HTTP - redireciona para HTTPS
+      - "traefik.http.routers.crm-http-dev.rule=Host(`sales.innexar.app`)"
+      - "traefik.http.routers.crm-http-dev.entrypoints=web"
+      - "traefik.http.routers.crm-http-dev.middlewares=redirect-to-https-frontend"
+      - "traefik.http.middlewares.redirect-to-https-frontend.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https-frontend.redirectscheme.permanent=true"
+      # Router HTTPS
+      - "traefik.http.routers.crm-dev.rule=Host(`sales.innexar.app`)"
+      - "traefik.http.routers.crm-dev.entrypoints=websecure"
+      - "traefik.http.routers.crm-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.crm-dev.service=crm-frontend-dev"
+      - "traefik.http.services.crm-frontend-dev.loadbalancer.server.port=3000"
+      - "traefik.docker.network=fixelo_fixelo-network"
+
+  website:
+    build:
+      context: ../innexar-website
+      dockerfile: Dockerfile.dev
+    container_name: innexar-website-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      CRM_API_URL: http://backend:8000/api
+      CRM_WEBHOOK_URL: http://backend:8000/api/webhooks/contact
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+    volumes:
+      - ../innexar-website:/app:cached
+      - /app/node_modules
+    networks:
+      - crm-dev-network
+      - fixelo_fixelo-network
+    labels:
+      - "traefik.enable=true"
+      # Router HTTP
+      - "traefik.http.routers.innexar-dev.rule=Host(`innexar.app`) || Host(`www.innexar.app`)"
+      - "traefik.http.routers.innexar-dev.entrypoints=web"
+      - "traefik.http.routers.innexar-dev.middlewares=redirect-to-https-website"
+      - "traefik.http.middlewares.redirect-to-https-website.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https-website.redirectscheme.permanent=true"
+      # Router HTTPS
+      - "traefik.http.routers.innexar-secure-dev.rule=Host(`innexar.app`) || Host(`www.innexar.app`)"
+      - "traefik.http.routers.innexar-secure-dev.entrypoints=websecure"
+      - "traefik.http.routers.innexar-secure-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.innexar-secure-dev.service=innexar-website-dev"
+      - "traefik.http.services.innexar-website-dev.loadbalancer.server.port=3000"
+      - "traefik.docker.network=fixelo_fixelo-network"
+
+networks:
+  crm-dev-network:
+    driver: bridge
+  fixelo_fixelo-network:
+    external: true

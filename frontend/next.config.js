@@ -62,6 +62,17 @@ const nextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
 
+  // Proxy para o Backend (resolve Mixed Content e CORS)
+  // Nota: Rotas API do Next.js têm precedência sobre rewrites
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.BACKEND_URL || 'http://backend:8000'}/api/:path*`,
+      },
+    ]
+  },
+
   // Headers para cache
   async headers() {
     return [

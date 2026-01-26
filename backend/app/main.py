@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.api import (
@@ -7,7 +9,7 @@ from app.api import (
     external, commissions, quote_requests, notifications, ai, templates, 
     goals, ai_actions, ai_config, ai_chat, lead_analysis, webhooks, 
     ai_public, site_orders, system_config, public_config, emails, 
-    site_customers, site_generator_config, site_files
+    site_customers, site_generator_config, site_files, launch
 )
 
 
@@ -21,6 +23,33 @@ app = FastAPI(
     description="API para CRM interno da Innexar",
     version="1.0.0"
 )
+
+# Exception handler for validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Format Pydantic validation errors as readable strings"""
+    errors = exc.errors()
+    if errors:
+        # Get the first error message
+        first_error = errors[0]
+        field = '.'.join(str(loc) for loc in first_error.get('loc', []) if loc != 'body')
+        message = first_error.get('msg', 'Validation error')
+        error_message = f"{field}: {message}" if field else message
+        
+        # Special handling for missing Authorization header
+        if 'authorization' in str(first_error.get('loc', [])).lower() or 'credentials' in str(first_error.get('loc', [])).lower():
+            error_message = "Token de autenticação não fornecido ou formato inválido. Use: Authorization: Bearer <token>"
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": error_message, "errors": errors}
+            )
+    else:
+        error_message = "Validation error"
+    
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": error_message, "errors": errors}
+    )
 
 # CORS
 app.add_middleware(
@@ -59,6 +88,7 @@ app.include_router(emails.router, tags=["emails"])
 app.include_router(site_customers.router, prefix="/api", tags=["site-customers"])
 app.include_router(site_generator_config.router, prefix="/api", tags=["site-generator-config"])
 app.include_router(site_files.router, prefix="/api", tags=["site-files"])
+app.include_router(launch.router, prefix="/api", tags=["launch"])
 
 # New clean customer auth module
 from app.api.customer_auth import router as customer_auth_router

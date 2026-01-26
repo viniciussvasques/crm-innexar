@@ -7,12 +7,20 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id } = await params
+        
+        // Reject non-numeric IDs to avoid catching static routes
+        if (isNaN(Number(id))) {
+            return NextResponse.json(
+                { error: 'Invalid order ID' },
+                { status: 404 }
+            )
+        }
+        
         const authHeader = request.headers.get('authorization')
         if (!authHeader) {
             return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 })
         }
-
-        const { id } = await params
 
         const response = await fetch(`${BACKEND_URL}/api/site-orders/${id}`, {
             method: 'GET',
@@ -47,12 +55,21 @@ export async function PUT(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id } = await params
+        
+        // Reject non-numeric IDs to avoid catching static routes
+        if (isNaN(Number(id))) {
+            return NextResponse.json(
+                { error: 'Invalid order ID' },
+                { status: 404 }
+            )
+        }
+        
         const authHeader = request.headers.get('authorization')
         if (!authHeader) {
             return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 })
         }
-
-        const { id } = await params
+        
         const body = await request.json()
 
         const response = await fetch(`${BACKEND_URL}/api/site-orders/${id}`, {
@@ -89,12 +106,20 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id } = await params
+        
+        // Reject non-numeric IDs to avoid catching static routes
+        if (isNaN(Number(id))) {
+            return NextResponse.json(
+                { error: 'Invalid order ID' },
+                { status: 404 }
+            )
+        }
+        
         const authHeader = request.headers.get('authorization')
         if (!authHeader) {
             return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 })
         }
-
-        const { id } = await params
         const body = await request.json()
 
         const response = await fetch(`${BACKEND_URL}/api/site-orders/${id}`, {

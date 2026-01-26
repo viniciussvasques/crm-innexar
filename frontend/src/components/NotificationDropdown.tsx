@@ -51,7 +51,7 @@ export default function NotificationDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+        className="relative p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
         title={t('notifications.title')}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -65,14 +65,14 @@ export default function NotificationDropdown() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-          <div className="p-4 border-b border-gray-200">
+        <div className="absolute right-0 mt-2 w-80 bg-slate-900 rounded-lg shadow-lg border border-white/10 z-50">
+          <div className="p-4 border-b border-white/10">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">{t('notifications.title')}</h3>
+              <h3 className="text-lg font-semibold text-white">{t('notifications.title')}</h3>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="text-sm text-primary hover:text-primary-dark"
+                  className="text-sm text-primary hover:text-primary-notep"
                 >
                   {t('notifications.markAllRead')}
                 </button>
@@ -82,12 +82,12 @@ export default function NotificationDropdown() {
 
           <div className="max-h-96 overflow-y-auto">
             {loading ? (
-              <div className="p-4 text-center text-gray-500">
+              <div className="p-4 text-center text-slate-400">
                 {t('common.loading')}
               </div>
             ) : notifications.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="p-8 text-center text-slate-500">
+                <svg className="w-12 h-12 mx-auto mb-3 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5-5V7a3 3 0 00-6 0v5l-5 5h5m0 0v2a2 2 0 004 0v-2m-4 0h4" />
                 </svg>
                 <p>{t('notifications.noNotifications')}</p>
@@ -97,21 +97,20 @@ export default function NotificationDropdown() {
                 {notifications.slice(0, 10).map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
-                      !notification.is_read ? 'bg-blue-50' : ''
-                    }`}
+                    className={`p-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${!notification.is_read ? 'bg-blue-900/10' : ''
+                      }`}
                     onClick={() => markAsRead(notification.id)}
                   >
                     <div className="flex items-start gap-3">
                       <span className="text-lg">{getNotificationIcon(notification.type)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
+                        <p className="text-sm font-medium text-white truncate">
                           {notification.title}
                         </p>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-slate-400 mt-1">
                           {notification.message}
                         </p>
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-slate-600 mt-2">
                           {formatTime(notification.created_at)}
                         </p>
                       </div>
@@ -122,8 +121,8 @@ export default function NotificationDropdown() {
                   </div>
                 ))}
                 {notifications.length > 10 && (
-                  <div className="p-4 text-center border-t border-gray-200">
-                    <button className="text-sm text-primary hover:text-primary-dark">
+                  <div className="p-4 text-center border-t border-white/10">
+                    <button className="text-sm text-primary hover:text-primary-notep">
                       {t('notifications.viewAll')}
                     </button>
                   </div>

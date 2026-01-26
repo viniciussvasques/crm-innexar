@@ -21,10 +21,32 @@ class TemplateService:
         """
         Selects the best template based on onboarding data.
         
-        Returns template name (e.g., "premium-static", "landing-page")
+        Returns template name (e.g., "premium-static", "modern-landing", "professional-services")
         """
-        # Always use premium-static for now (we can add more templates later)
-        return "premium-static"
+        from app.models.site_order import SiteNiche, SiteTone
+        
+        # Map niche to template
+        niche_map = {
+            SiteNiche.LAWYER: "professional-services",
+            SiteNiche.DENTIST: "professional-services",
+            SiteNiche.REAL_ESTATE: "professional-services",
+            SiteNiche.RESTAURANT: "premium-static",
+            SiteNiche.PLUMBER: "premium-static",
+            SiteNiche.ELECTRICIAN: "premium-static",
+            SiteNiche.LANDSCAPING: "premium-static",
+            SiteNiche.CLEANING: "premium-static",
+            SiteNiche.GENERAL: "premium-static",
+            SiteNiche.OTHER: "premium-static",
+        }
+        
+        # Select template based on niche
+        template = niche_map.get(onboarding.niche, "premium-static")
+        
+        # Check if template exists, fallback to premium-static
+        if not self.template_exists(template):
+            return "premium-static"
+        
+        return template
     
     def get_template_path(self, template_name: str) -> Path:
         """Get the base path for a template"""

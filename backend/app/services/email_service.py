@@ -190,12 +190,14 @@ class EmailService:
 
     def send_payment_confirmation(self, order: dict) -> bool:
         """Send email when payment is received."""
+        # Use stripe_session_id for the onboarding link since the frontend expects it
+        session_id = order.get("stripe_session_id", "")
         context = {
             "customer_name": order.get("customer_name", ""),
             "order_id": order.get("id"),
             "total_price": order.get("total_price", 399),
-            "onboarding_url": f"https://innexar.com/launch/onboarding?order_id={order.get('id')}",
-            "dashboard_url": f"https://innexar.com/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "onboarding_url": f"https://innexar.app/en/launch/onboarding?order_id={session_id}" if session_id else f"https://innexar.app/en/launch/onboarding?order_id={order.get('id')}",
+            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(PAYMENT_CONFIRMATION_TEMPLATE, context)
@@ -212,7 +214,7 @@ class EmailService:
             "customer_name": order.get("customer_name", ""),
             "business_name": business_name,
             "order_id": order.get("id"),
-            "dashboard_url": f"https://innexar.com/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(ONBOARDING_COMPLETE_TEMPLATE, context)
@@ -229,7 +231,7 @@ class EmailService:
             "customer_name": order.get("customer_name", ""),
             "business_name": business_name,
             "order_id": order.get("id"),
-            "dashboard_url": f"https://innexar.com/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(SITE_IN_PROGRESS_TEMPLATE, context)
@@ -247,7 +249,7 @@ class EmailService:
             "business_name": business_name,
             "order_id": order.get("id"),
             "preview_url": preview_url,
-            "dashboard_url": f"https://innexar.com/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
             "revisions_remaining": order.get("revisions_included", 2) - order.get("revisions_used", 0),
         }
 
@@ -266,7 +268,7 @@ class EmailService:
             "business_name": business_name,
             "order_id": order.get("id"),
             "site_url": site_url,
-            "dashboard_url": f"https://innexar.com/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(SITE_DELIVERED_TEMPLATE, context)

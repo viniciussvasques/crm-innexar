@@ -1,76 +1,28 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import api from '@/lib/api'
 import { toast } from '@/components/Toast'
 import Modal from '@/components/Modal'
 import Button from '@/components/Button'
+import LogViewer from '@/components/SiteGeneration/LogViewer'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-    Package, DollarSign, Clock, CheckCircle, Truck, AlertCircle,
-    LayoutGrid, LayoutList, Building2, MapPin, Phone, Mail, Calendar, ExternalLink, Globe,
-    Wand2, Loader2
+    Package, DollarSign, Clock, CheckCircle, AlertCircle,
+    LayoutGrid, LayoutList, MapPin, Mail, Calendar, ExternalLink, Globe,
+    Wand2, FileCode, Presentation, RefreshCw
 } from 'lucide-react'
+import { Timeline } from '@/components/SiteGeneration/Timeline'
+import { useSiteOrders } from '@/hooks/useSiteOrders'
+import { SiteOrder, SiteDeliverable, StatusConfig } from './types'
+import { getProcessSteps } from './utils'
 
-interface SiteOrder {
-    id: number
-    customer_name: string
-    customer_email: string
-    customer_phone?: string
-    status: 'pending_payment' | 'paid' | 'onboarding_pending' | 'building' | 'review' | 'delivered' | 'cancelled'
-    base_price: number
-    total_price: number
-    delivery_days: number
-    expected_delivery_date?: string
-    actual_delivery_date?: string
-    revisions_included: number
-    revisions_used: number
-    site_url?: string
-    repository_url?: string
-    admin_notes?: string
-    created_at: string
-    paid_at?: string
-    onboarding_completed_at?: string
-    delivered_at?: string
-    onboarding?: SiteOnboarding
-    addons?: SiteOrderAddon[]
-}
-
-interface SiteOnboarding {
-    id: number
-    business_name: string
-    business_email: string
-    business_phone: string
-    has_whatsapp: boolean
-    niche: string
-    primary_city: string
-    state: string
-    services: string[]
-    primary_service: string
-    tone: string
-    primary_cta: string
-    primary_color?: string
-}
-
-interface SiteOrderAddon {
-    id: number
-    addon_id: number
-    price_paid: number
-    addon?: { name: string; slug: string }
-}
-
-interface OrderStats {
-    status_counts: Record<string, number>
-    total_revenue: number
-    orders_this_month: number
-}
-
-const statusConfig: Record<string, { label: string; color: string; bgColor: string; borderColor: string; icon: React.ComponentType<any> }> = {
+const statusConfig: Record<string, StatusConfig> = {
     pending_payment: { label: 'Pending Payment', color: 'text-slate-300', bgColor: 'bg-slate-500/20', borderColor: 'border-slate-500/30', icon: AlertCircle },
     paid: { label: 'Paid', color: 'text-amber-300', bgColor: 'bg-amber-500/20', borderColor: 'border-amber-500/30', icon: DollarSign },
     onboarding_pending: { label: 'Onboarding', color: 'text-orange-300', bgColor: 'bg-orange-500/20', borderColor: 'border-orange-500/30', icon: Clock },
     building: { label: 'Building', color: 'text-blue-300', bgColor: 'bg-blue-500/20', borderColor: 'border-blue-500/30', icon: Package },
+    generating: { label: 'Generating AI', color: 'text-blue-300', bgColor: 'bg-blue-500/20', borderColor: 'border-blue-500/30', icon: Wand2 },
     review: { label: 'In Review', color: 'text-purple-300', bgColor: 'bg-purple-500/20', borderColor: 'border-purple-500/30', icon: Clock },
     delivered: { label: 'Delivered', color: 'text-emerald-300', bgColor: 'bg-emerald-500/20', borderColor: 'border-emerald-500/30', icon: CheckCircle },
     cancelled: { label: 'Cancelled', color: 'text-red-300', bgColor: 'bg-red-500/20', borderColor: 'border-red-500/30', icon: AlertCircle },
@@ -78,29 +30,15 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
 
 export default function SiteOrdersPage() {
     const router = useRouter()
-    const [orders, setOrders] = useState<SiteOrder[]>([])
-    const [stats, setStats] = useState<OrderStats | null>(null)
-    const [loading, setLoading] = useState(true)
+    const { orders, stats, loading, generating, loadOrders, updateStatus, generateSite, checkEmptyGenerations, resetEmptyGenerations, resetGeneration, setGenerating } = useSiteOrders()
+
+    // UI State
     const [statusFilter, setStatusFilter] = useState<string>('all')
     const [selectedOrder, setSelectedOrder] = useState<SiteOrder | null>(null)
     const [showDetails, setShowDetails] = useState(false)
     const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban')
-
-    const loadOrders = useCallback(async () => {
-        try {
-            const [ordersRes, statsRes] = await Promise.all([
-                api.get<SiteOrder[]>('/api/site-orders/'),
-                api.get<OrderStats>('/api/site-orders/stats'),
-            ])
-            setOrders(ordersRes.data)
-            setStats(statsRes.data)
-        } catch (error) {
-            console.error('Error loading orders:', error)
-            toast.error('Failed to load orders')
-        } finally {
-            setLoading(false)
-        }
-    }, [])
+    const [selectedArtifact, setSelectedArtifact] = useState<SiteDeliverable | null>(null)
+    const [viewLogs, setViewLogs] = useState(false)
 
     useEffect(() => {
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
@@ -108,15 +46,40 @@ export default function SiteOrdersPage() {
         loadOrders()
     }, [router, loadOrders])
 
-    const handleStatusUpdate = async (orderId: number, newStatus: string) => {
-        try {
-            await api.patch(`/api/site-orders/${orderId}/status`, { status: newStatus })
-            loadOrders()
-            toast.success('Status updated successfully')
-        } catch (error) {
-            console.error('Error updating status:', error)
-            toast.error('Failed to update status')
+    const [emptyGenerations, setEmptyGenerations] = useState<any>(null)
+    const [checkingEmpty, setCheckingEmpty] = useState(false)
+
+    const handleGenerateSite = async (orderId: number) => {
+        const started = await generateSite(orderId)
+        if (started) {
+            setViewLogs(true)
         }
+    }
+
+    const handleCheckEmptyGenerations = async () => {
+        setCheckingEmpty(true)
+        try {
+            const result = await checkEmptyGenerations()
+            setEmptyGenerations(result)
+            if (result && result.empty_generations > 0) {
+                toast.warning(`Found ${result.empty_generations} orders with no generated files`)
+            } else {
+                toast.success('All generating orders have files')
+            }
+        } finally {
+            setCheckingEmpty(false)
+        }
+    }
+
+    const handleResetEmptyGenerations = async () => {
+        const result = await resetEmptyGenerations()
+        if (result) {
+            setEmptyGenerations(null)
+        }
+    }
+
+    const handleResetSingleGeneration = async (orderId: number) => {
+        await resetGeneration(orderId)
     }
 
     const filteredOrders = useMemo(() => {
@@ -125,29 +88,10 @@ export default function SiteOrdersPage() {
     }, [orders, statusFilter])
 
     const ordersByStatus = useMemo(() => {
-        const grouped: Record<string, SiteOrder[]> = { paid: [], building: [], review: [], delivered: [] }
+        const grouped: Record<string, SiteOrder[]> = { paid: [], building: [], generating: [], review: [], delivered: [] }
         orders.forEach(order => { if (grouped[order.status]) grouped[order.status].push(order) })
         return grouped
     }, [orders])
-
-    // --- Actions ---
-    const [generating, setGenerating] = useState(false)
-
-    const handleGenerateSite = async (orderId: number) => {
-        if (!confirm('Are you sure you want to trigger AI generation? This will overwrite existing files.')) return
-        setGenerating(true)
-        try {
-            await api.post(`/api/site-orders/${orderId}/build`)
-            toast.success('Site generation started successfully!')
-            loadOrders()
-            // Optional: Close modal or refresh check
-        } catch (error: any) {
-            console.error(error)
-            toast.error(error.response?.data?.detail || 'Failed to start generation')
-        } finally {
-            setGenerating(false)
-        }
-    }
 
     if (loading) {
         return (
@@ -193,7 +137,70 @@ export default function SiteOrdersPage() {
                             Table
                         </button>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleCheckEmptyGenerations}
+                            disabled={checkingEmpty}
+                            className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-600/50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors"
+                        >
+                            <AlertCircle className="w-4 h-4" />
+                            {checkingEmpty ? 'Checking...' : 'Check Empty Generations'}
+                        </button>
+                        {emptyGenerations && emptyGenerations.empty_generations > 0 && (
+                            <button
+                                onClick={handleResetEmptyGenerations}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium text-white transition-colors"
+                            >
+                                Reset {emptyGenerations.empty_generations} Empty
+                            </button>
+                        )}
+                    </div>
                 </div>
+
+                {/* Empty Generations Alert */}
+                {emptyGenerations && emptyGenerations.empty_generations > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-amber-500/20 border border-amber-500/30 rounded-xl p-4 mb-6"
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <AlertCircle className="w-5 h-5 text-amber-400" />
+                                <div>
+                                    <p className="text-amber-300 font-semibold">
+                                        {emptyGenerations.empty_generations} orders in "Generating AI" have no files
+                                    </p>
+                                    <p className="text-amber-200/70 text-sm mt-1">
+                                        These orders can be reset to allow regeneration
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {emptyGenerations.empty_orders && emptyGenerations.empty_orders.length > 0 && (
+                            <div className="mt-4 space-y-2">
+                                {emptyGenerations.empty_orders.slice(0, 5).map((order: any) => (
+                                    <div key={order.order_id} className="flex items-center justify-between bg-black/20 rounded-lg p-2">
+                                        <div>
+                                            <span className="text-white font-medium">Order #{order.order_id}</span>
+                                            <span className="text-amber-200/70 ml-2">{order.customer_name}</span>
+                                            <span className="text-amber-200/50 text-xs ml-2">({order.files_count} files)</span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleResetSingleGeneration(order.order_id)}
+                                            className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs text-white"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
+                                ))}
+                                {emptyGenerations.empty_orders.length > 5 && (
+                                    <p className="text-amber-200/50 text-xs">... and {emptyGenerations.empty_orders.length - 5} more</p>
+                                )}
+                            </div>
+                        )}
+                    </motion.div>
+                )}
 
                 {/* Stats Cards */}
                 {stats && (
@@ -201,7 +208,7 @@ export default function SiteOrdersPage() {
                         {[
                             { label: 'Total Revenue', value: `$${stats.total_revenue.toLocaleString()}`, icon: DollarSign, color: 'emerald' },
                             { label: 'Orders This Month', value: stats.orders_this_month, icon: Package, color: 'blue' },
-                            { label: 'In Progress', value: (stats.status_counts['building'] || 0) + (stats.status_counts['review'] || 0), icon: Clock, color: 'amber' },
+                            { label: 'In Progress', value: (stats.status_counts['building'] || 0) + (stats.status_counts['generating'] || 0) + (stats.status_counts['review'] || 0), icon: Clock, color: 'amber' },
                             { label: 'Delivered', value: stats.status_counts['delivered'] || 0, icon: CheckCircle, color: 'purple' }
                         ].map((stat, i) => (
                             <motion.div
@@ -229,7 +236,7 @@ export default function SiteOrdersPage() {
                 {viewMode === 'kanban' && (
                     <div className="overflow-x-auto pb-4">
                         <div className="flex gap-4 min-w-max">
-                            {['paid', 'building', 'review', 'delivered'].map(status => {
+                            {['paid', 'building', 'generating', 'review', 'delivered'].map(status => {
                                 const config = statusConfig[status]
                                 const statusOrders = ordersByStatus[status] || []
                                 return (
@@ -356,9 +363,64 @@ export default function SiteOrdersPage() {
             </div>
 
             {/* Order Details Modal */}
-            <Modal isOpen={showDetails} onClose={() => { setShowDetails(false); setSelectedOrder(null) }} title="Order Details" size="xl">
+            <Modal isOpen={showDetails} onClose={() => { setShowDetails(false); setSelectedOrder(null); setViewLogs(false) }} title="Order Details" size="xl">
                 {selectedOrder && (
                     <div className="space-y-6">
+
+                        {/* Realtime Logs Section */}
+                        {(viewLogs || selectedOrder.status === 'generating' || selectedOrder.status === 'review') && (
+                            <div className="mb-6">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-white font-semibold">Generation Progress</h4>
+                                    <button
+                                        onClick={() => setViewLogs(!viewLogs)}
+                                        className="text-xs text-blue-400 hover:text-blue-300"
+                                    >
+                                        {viewLogs ? 'Hide Logs' : 'Show Logs'}
+                                    </button>
+                                </div>
+                                {viewLogs && (
+                                    <LogViewer
+                                        orderId={selectedOrder.id}
+                                        onComplete={() => {
+                                            setGenerating(false)
+                                            loadOrders() // Refresh status to Review
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {/* Interactive Timeline */}
+                        {(selectedOrder.status === 'building' || selectedOrder.status === 'generating' || selectedOrder.status === 'review' || selectedOrder.status === 'delivered') && (
+                            <div className="bg-white/5 rounded-xl border border-white/10 p-6 mb-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h4 className="text-white font-semibold flex items-center">
+                                        <Presentation className="w-5 h-5 mr-2 text-purple-400" />
+                                        Creation Journey
+                                    </h4>
+                                </div>
+                                <Timeline
+                                    steps={getProcessSteps(selectedOrder)}
+                                    currentStepId="strategy"
+                                    onViewArtifact={(stepId) => {
+                                        // Find artifact for this step
+                                        const artifact = selectedOrder.deliverables?.find(d => {
+                                            if (stepId === 'strategy') return d.type === 'briefing';
+                                            if (stepId === 'architecture') return d.type === 'sitemap';
+                                            return false;
+                                        });
+
+                                        if (artifact) {
+                                            setSelectedArtifact(artifact);
+                                        } else {
+                                            toast.error('Detalhes ainda não disponíveis para esta etapa');
+                                        }
+                                    }}
+                                />
+                            </div>
+                        )}
+
                         {/* Status and Actions */}
                         <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
                             <div>
@@ -370,25 +432,46 @@ export default function SiteOrdersPage() {
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                {(selectedOrder.status === 'paid' || selectedOrder.status === 'building') && selectedOrder.onboarding && (
+                                {selectedOrder.status === 'generating' && (
+                                    <Button
+                                        onClick={() => handleResetSingleGeneration(selectedOrder.id)}
+                                        className="bg-red-600 hover:bg-red-700"
+                                    >
+                                        <AlertCircle className="w-4 h-4 mr-2" />
+                                        Reset Generation
+                                    </Button>
+                                )}
+                                {(selectedOrder.status === 'paid' || selectedOrder.status === 'building' || selectedOrder.status === 'generating' || selectedOrder.status === 'review') && selectedOrder.onboarding && (
                                     <Button
                                         onClick={() => handleGenerateSite(selectedOrder.id)}
-                                        isLoading={generating}
+                                        isLoading={generating || selectedOrder.status === 'generating'}
                                         className="bg-purple-600 hover:bg-purple-700"
+                                        disabled={generating || selectedOrder.status === 'generating'}
                                     >
                                         <Wand2 className="w-4 h-4 mr-2" />
-                                        Generate Site with AI
+                                        {selectedOrder.status === 'generating' ? 'Generating...' : 'Generate Site with AI'}
+                                    </Button>
+                                )}
+
+                                {(selectedOrder.status === 'review' || selectedOrder.status === 'delivered') && selectedOrder.site_url && (
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => window.open(`/projects/${selectedOrder.id}/ide`, '_blank')}
+                                        className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                                    >
+                                        <FileCode className="w-4 h-4 mr-2" />
+                                        Open IDE
                                     </Button>
                                 )}
 
                                 {selectedOrder.status === 'paid' && (
-                                    <Button variant="secondary" onClick={() => handleStatusUpdate(selectedOrder.id, 'building')}>Start Manually</Button>
+                                    <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'building')}>Start Manually</Button>
                                 )}
                                 {selectedOrder.status === 'building' && (
-                                    <Button variant="secondary" onClick={() => handleStatusUpdate(selectedOrder.id, 'review')}>Send for Review</Button>
+                                    <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'review')}>Send for Review</Button>
                                 )}
                                 {selectedOrder.status === 'review' && (
-                                    <Button onClick={() => handleStatusUpdate(selectedOrder.id, 'delivered')}>Mark Delivered</Button>
+                                    <Button onClick={() => updateStatus(selectedOrder.id, 'delivered')}>Mark Delivered</Button>
                                 )}
                             </div>
                         </div>
@@ -443,6 +526,41 @@ export default function SiteOrdersPage() {
                                         ))}
                                     </div>
                                 </div>
+                                {/* Artifact Viewer Modal */}
+                                <Modal
+                                    isOpen={!!selectedArtifact}
+                                    onClose={() => setSelectedArtifact(null)}
+                                    title={selectedArtifact?.title || 'Detalhes do Artefato'}
+                                    size="xl"
+                                >
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between text-sm text-slate-400 border-b border-white/10 pb-4">
+                                            <span className="flex items-center">
+                                                <Clock className="w-4 h-4 mr-2" />
+                                                Gerado em: {selectedArtifact?.created_at ? new Date(selectedArtifact.created_at).toLocaleString('pt-BR') : '-'}
+                                            </span>
+                                            <span className={`px-2 py-1 rounded text-xs font-medium ${selectedArtifact?.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                                                selectedArtifact?.status === 'ready' ? 'bg-blue-500/20 text-blue-400' :
+                                                    'bg-gray-500/20 text-gray-400'
+                                                }`}>
+                                                {selectedArtifact?.status?.toUpperCase()}
+                                            </span>
+                                        </div>
+
+                                        <div className="bg-slate-950 rounded-lg p-4 font-mono text-sm text-slate-300 overflow-auto max-h-[60vh] whitespace-pre-wrap">
+                                            {selectedArtifact?.content || 'Conteúdo não disponível.'}
+                                        </div>
+
+                                        <div className="flex justify-end pt-4 border-t border-white/10">
+                                            <Button
+                                                variant="secondary"
+                                                onClick={() => setSelectedArtifact(null)}
+                                            >
+                                                Fechar
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </Modal>
                             </div>
                         )}
 

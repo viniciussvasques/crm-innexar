@@ -11,7 +11,9 @@ if not database_url.startswith("postgresql+asyncpg://"):
 engine = create_async_engine(
     database_url,
     echo=True,
-    future=True
+    future=True,
+    pool_pre_ping=True,  # Verify connections before using
+    pool_reset_on_return='commit'  # Reset connections on return to pool
 )
 
 AsyncSessionLocal = async_sessionmaker(

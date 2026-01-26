@@ -14,15 +14,14 @@ export default function Textarea({ label, error, className = '', ...props }: Tex
   return (
     <div>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-slate-300 mb-1">
           {label}
           {props.required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
       <textarea
-        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors resize-none ${
-          error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
-        } ${className}`}
+        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors resize-none bg-slate-900 text-white placeholder-slate-500 ${error ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500' : 'border-white/10'
+          } ${className}`}
         {...props}
       />
       {error && (

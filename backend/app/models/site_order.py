@@ -3,6 +3,8 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 from datetime import datetime
 import enum
+from app.models.site_customer import SiteCustomer # noqa: F401
+from app.models.site_deliverable import SiteDeliverable # noqa: F401
 
 
 class SiteOrderStatus(str, enum.Enum):
@@ -11,6 +13,7 @@ class SiteOrderStatus(str, enum.Enum):
     PAID = "paid"  # Pago, aguardando onboarding
     ONBOARDING_PENDING = "onboarding_pending"  # Aguardando cliente preencher
     BUILDING = "building"  # Em construção
+    GENERATING = "generating"  # Em geração por IA
     REVIEW = "review"  # Em revisão pelo cliente
     DELIVERED = "delivered"  # Entregue
     CANCELLED = "cancelled"  # Cancelado/Reembolsado
@@ -94,6 +97,7 @@ class SiteOrder(Base):
     onboarding = relationship("SiteOnboarding", back_populates="order", uselist=False)
     addons = relationship("SiteOrderAddon", back_populates="order")
     customer = relationship("SiteCustomer", back_populates="order", uselist=False)
+    deliverables = relationship("SiteDeliverable", back_populates="order")
 
 
 class SiteOnboarding(Base):

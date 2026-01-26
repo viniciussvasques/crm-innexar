@@ -18,7 +18,7 @@ router = APIRouter(prefix="/ai-config", tags=["ai-config"])
 
 class AIConfigCreate(BaseModel):
     name: str
-    provider: str  # grok, openai, anthropic, ollama, google, mistral, cohere
+    provider: str  # grok, openai, anthropic, ollama, google, mistral, cohere, deepseek, cloudflare
     model_name: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
@@ -26,6 +26,7 @@ class AIConfigCreate(BaseModel):
     is_default: bool = False
     priority: int = 0
     config: Optional[Dict[str, Any]] = None
+    account_id: Optional[str] = None  # Para Cloudflare: se fornecido, constrói base_url automaticamente
 
 class AIConfigUpdate(BaseModel):
     name: Optional[str] = None
@@ -36,6 +37,13 @@ class AIConfigUpdate(BaseModel):
     is_default: Optional[bool] = None
     priority: Optional[int] = None
     config: Optional[Dict[str, Any]] = None
+    account_id: Optional[str] = None  # Para Cloudflare: se fornecido, constrói base_url automaticamente
+
+class FetchModelsRequest(BaseModel):
+    provider: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    account_id: Optional[str] = None
 
 class AIConfigResponse(BaseModel):
     id: int
@@ -76,7 +84,13 @@ AVAILABLE_MODELS = {
     "grok": [
         {"name": "grok-1", "display": "Grok-1"},
         {"name": "grok-beta", "display": "Grok Beta"},
-        {"name": "grok-2", "display": "Grok-2 (se disponível)"}
+        {"name": "grok-2", "display": "Grok-2 (se disponível)"},
+        {"name": "grok-2-vision-1212", "display": "Grok 2 Vision (Latest)"}
+    ],
+    "deepseek": [
+        {"name": "deepseek-chat", "display": "DeepSeek Chat (V3)"},
+        {"name": "deepseek-coder", "display": "DeepSeek Coder (V2)"},
+        {"name": "deepseek-reasoner", "display": "DeepSeek R1 (Reasoning)"}
     ],
     "openai": [
         {"name": "gpt-4o", "display": "GPT-4o"},
@@ -147,6 +161,120 @@ async def get_available_models(
         raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
     
     return AVAILABLE_MODELS
+
+@router.post("/fetch-models")
+async def fetch_available_models(
+    request: FetchModelsRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Busca modelos disponíveis no provider usando a API Key fornecida"""
+    role_str = get_user_role_str(current_user)
+    if role_str.lower() != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
+    
+    if not request.api_key and request.provider not in ["ollama"]:
+        # Se não tem key no request, não tentamos buscar do DB para segurança (endpoint de setup)
+        # O usuário deve fornecer a chave explícita
+        return {"models": []}
+
+    try:
+        models = []
+        async with httpx.AsyncClient() as client:
+            
+            # OpenAI & Grok & Mistral & DeepSeek (OpenAI compatible)
+            if request.provider in ["openai", "grok", "mistral", "deepseek"]:
+                base_url = "https://api.openai.com/v1"
+                if request.provider == "grok": base_url = "https://api.x.ai/v1"
+                if request.provider == "mistral": base_url = "https://api.mistral.ai/v1"
+                if request.provider == "deepseek": base_url = "https://api.deepseek.com"
+                if request.base_url: base_url = request.base_url
+                
+                response = await client.get(
+                    f"{base_url}/models",
+                    headers={"Authorization": f"Bearer {request.api_key}"},
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for m in data.get("data", []):
+                        models.append({"name": m["id"], "display": m["id"]})
+            
+            # Anthropic
+            elif request.provider == "anthropic":
+                response = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={
+                        "x-api-key": request.api_key,
+                        "anthropic-version": "2023-06-01"
+                    },
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for m in data.get("data", []):
+                        models.append({"name": m["id"], "display": m["display_name"]})
+            
+            # Google Gemini
+            elif request.provider == "google":
+                # Reuse logic or call directly
+                params = {"key": request.api_key}
+                response = await client.get(
+                    "https://generativelanguage.googleapis.com/v1/models",
+                    params=params,
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for m in data.get("models", []):
+                        if "generateContent" in m.get("supportedGenerationMethods", []):
+                            name = m["name"].replace("models/", "")
+                            models.append({"name": name, "display": m.get("displayName", name)})
+
+            # Ollama
+            elif request.provider == "ollama":
+                base_url = request.base_url or "http://localhost:11434"
+                response = await client.get(f"{base_url}/api/tags", timeout=5.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    for m in data.get("models", []):
+                        models.append({"name": m["name"], "display": m["name"]})
+
+            # Cloudflare (Partial logic reuse or simple return)
+            elif request.provider == "cloudflare" and request.account_id:
+               # Similar to existing list_cloudflare_models but simplified
+                response = await client.get(
+                    f"https://api.cloudflare.com/client/v4/accounts/{request.account_id}/ai/models/search",
+                    headers={"Authorization": f"Bearer {request.api_key}"},
+                    params={"task": "Text Generation"},
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                     data = response.json()
+                     if data.get("success"):
+                         for m in data.get("result", []):
+                             models.append({"name": m["name"], "display": m["name"]})
+
+            # Cohere
+            elif request.provider == "cohere":
+                 response = await client.get(
+                    "https://api.cohere.com/v1/models",
+                    headers={
+                        "Authorization": f"Bearer {request.api_key}",
+                        "X-Client-Name": "Innexar-CRM"
+                    },
+                    timeout=10.0
+                )
+                 if response.status_code == 200:
+                    data = response.json()
+                    for m in data.get("models", []):
+                        if "chat" in m.get("endpoints", []) or "generate" in m.get("endpoints", []):
+                            models.append({"name": m["name"], "display": m["name"]})
+
+        return {"models": models}
+    
+    except Exception as e:
+        print(f"Error fetching models: {e}")
+        return {"models": [], "error": str(e)}
 
 @router.get("/google/list-models")
 async def list_google_models(
@@ -331,6 +459,15 @@ async def create_ai_config(
     if role_str.lower() != "admin":
         raise HTTPException(status_code=403, detail="Apenas administradores podem criar configurações")
     
+    # Para Cloudflare: se account_id for fornecido mas base_url não, construir automaticamente
+    base_url = config_data.base_url
+    if config_data.provider.lower() == "cloudflare":
+        if config_data.account_id and not base_url:
+            base_url = f"https://api.cloudflare.com/client/v4/accounts/{config_data.account_id}/ai/run"
+        elif config_data.account_id and base_url:
+            # Se ambos foram fornecidos, usar o account_id para construir (prioridade)
+            base_url = f"https://api.cloudflare.com/client/v4/accounts/{config_data.account_id}/ai/run"
+    
     # Se for marcado como padrão, desmarcar outros
     if config_data.is_default:
         result = await db.execute(select(AIConfig).where(AIConfig.is_default == True))
@@ -343,7 +480,7 @@ async def create_ai_config(
         provider=config_data.provider,
         model_name=config_data.model_name,
         api_key=config_data.api_key,
-        base_url=config_data.base_url,
+        base_url=base_url,
         is_active=config_data.is_active,
         is_default=config_data.is_default,
         priority=config_data.priority,
@@ -454,6 +591,26 @@ async def update_ai_config(
             default.is_default = False
     
     update_data = config_data.model_dump(exclude_unset=True)
+    
+    # Se api_key não foi fornecido (string vazia ou None), manter o valor existente
+    if "api_key" in update_data and (not update_data["api_key"] or update_data["api_key"].strip() == ""):
+        update_data.pop("api_key")
+    
+    # Para Cloudflare: se account_id for fornecido mas base_url não, construir automaticamente
+    if config.provider.lower() == "cloudflare" and "account_id" in update_data:
+        account_id = update_data.pop("account_id")
+        if account_id:
+            # Atualizar config JSON com account_id
+            config_dict = config.config or {}
+            config_dict["account_id"] = account_id
+            update_data["config"] = config_dict
+            # Construir base_url se não foi fornecida
+            if "base_url" not in update_data or not update_data.get("base_url"):
+                update_data["base_url"] = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run"
+            elif update_data.get("base_url") and not update_data["base_url"].startswith("https://api.cloudflare.com/client/v4/accounts/"):
+                # Se base_url foi fornecida mas não está no formato correto, reconstruir com account_id
+                update_data["base_url"] = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run"
+    
     for key, value in update_data.items():
         setattr(config, key, value)
     
@@ -629,6 +786,48 @@ async def _test_provider_connection(config: AIConfig) -> Dict[str, Any]:
                 else:
                     return {"success": False, "error": f"Status {response.status_code}: {response.text[:200]}"}
         
+
+        elif config.provider == "deepseek":
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.deepseek.com/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {config.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": config.model_name,
+                        "messages": [{"role": "user", "content": test_prompt}],
+                        "max_tokens": 10
+                    },
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    return {"success": True, "message": "Conexão bem-sucedida"}
+                else:
+                    return {"success": False, "error": f"Status {response.status_code}: {response.text[:200]}"}
+
+        elif config.provider == "cohere":
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.cohere.com/v1/chat",
+                    headers={
+                        "Authorization": f"Bearer {config.api_key}",
+                        "Content-Type": "application/json",
+                        "X-Client-Name": "Innexar-CRM"
+                    },
+                    json={
+                        "model": config.model_name,
+                        "message": test_prompt,
+                        "temperature": 0.3
+                    },
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    return {"success": True, "message": "Conexão bem-sucedida"}
+                else:
+                    return {"success": False, "error": f"Status {response.status_code}: {response.text[:200]}"}
+
         elif config.provider == "google":
             if not config.api_key:
                 return {"success": False, "error": "API key é necessária para Google Gemini"}
@@ -761,16 +960,31 @@ async def _test_provider_connection(config: AIConfig) -> Dict[str, Any]:
                     return {"success": False, "error": f"Status {response.status_code}: {response.text[:200]}"}
         
         elif config.provider == "cloudflare":
-            # Cloudflare Workers AI requires account_id in base_url
-            if not config.base_url:
-                return {"success": False, "error": "Base URL é necessária. Formato: https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run"}
+            # Cloudflare Workers AI: construir base_url a partir de account_id se necessário
+            base_url = config.base_url
+            if not base_url and config.config:
+                account_id = config.config.get("account_id")
+                if account_id:
+                    base_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run"
+            
+            if not base_url:
+                return {"success": False, "error": "Base URL ou Account ID é necessário. Forneça account_id na configuração ou a URL base completa."}
             
             if not config.api_key:
                 return {"success": False, "error": "API Token é necessário"}
             
             # Clean up base_url and model_name to avoid double slashes
-            base_url = config.base_url.rstrip('/')
+            base_url = base_url.rstrip('/')
             model_name = config.model_name.lstrip('/')
+            
+            # Ensure model_name starts with @cf/ or @hf/ if it's a Cloudflare model
+            if not model_name.startswith('@cf/') and not model_name.startswith('@hf/'):
+                # If it doesn't start with @cf/ or @hf/, try to add it
+                if '/' not in model_name:
+                    model_name = f"@cf/meta/{model_name}"
+                else:
+                    model_name = f"@cf/{model_name}"
+            
             full_url = f"{base_url}/{model_name}"
             
             # For instruct models, use messages format; for others use prompt
@@ -800,14 +1014,28 @@ async def _test_provider_connection(config: AIConfig) -> Dict[str, Any]:
                 if response.status_code == 200:
                     return {"success": True, "message": "Conexão bem-sucedida com Cloudflare Workers AI"}
                 else:
-                    error_detail = response.text[:300]
+                    error_text = response.text[:500]
+                    error_detail = f"Status {response.status_code}"
                     try:
                         error_data = response.json()
                         if "errors" in error_data:
-                            error_detail = str(error_data["errors"])
+                            errors = error_data["errors"]
+                            if isinstance(errors, list) and len(errors) > 0:
+                                first_error = errors[0]
+                                error_code = first_error.get('code', 'unknown')
+                                error_message = first_error.get('message', 'Unknown error')
+                                error_detail = f"Code {error_code}: {error_message}"
+                                
+                                # Provide helpful message for common errors
+                                if error_code == 7000 or "No route for that URI" in error_message:
+                                    error_detail = f"Modelo '{model_name}' não encontrado ou não disponível no seu Account ID. Verifique se o modelo está disponível. URL tentada: {full_url}"
+                            else:
+                                error_detail = str(errors)
+                        elif "error" in error_data:
+                            error_detail = str(error_data["error"])
                     except:
-                        pass
-                    return {"success": False, "error": f"Status {response.status_code}: {error_detail}"}
+                        error_detail = error_text
+                    return {"success": False, "error": f"Erro na API do Cloudflare: {error_detail}"}
         
         else:
             return {"success": False, "error": f"Provider '{config.provider}' não suportado"}

@@ -10,9 +10,14 @@ import enum
 class IntegrationType(str, enum.Enum):
     GITHUB = "github"
     CLOUDFLARE = "cloudflare"
+    CLOUDFLARE_PAGES = "cloudflare_pages"
+    CLOUDFLARE_R2 = "cloudflare_r2"
+    CLOUDFLARE_DNS = "cloudflare_dns"
+    AWS_S3 = "aws_s3"
     STRIPE = "stripe"
     MAILCOW = "mailcow"
     OLLAMA = "ollama"
+    VERCEL = "vercel"
     OTHER = "other"
 
 class ServerType(str, enum.Enum):
@@ -20,6 +25,7 @@ class ServerType(str, enum.Enum):
     FTP = "ftp"
     API = "api"
     CLOUDFLARE_PAGES = "cloudflare_pages"
+    VERCEL = "vercel"
 
 class IntegrationConfig(Base):
     """Generic configuration for external integrations"""

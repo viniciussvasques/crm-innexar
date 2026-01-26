@@ -44,15 +44,20 @@ def order_to_dict(order: SiteOrder) -> dict:
     return result
 
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 @router.post("/send")
 async def send_email(
     request: SendEmailRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _: dict = Depends(require_admin),
 ):
     """Send an email notification for an order."""
     # Get order
-    order = db.query(SiteOrder).filter(SiteOrder.id == request.order_id).first()
+    result = await db.execute(select(SiteOrder).where(SiteOrder.id == request.order_id))
+    order = result.scalar_one_or_none()
+    
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
@@ -86,10 +91,12 @@ async def send_email(
 @router.post("/send-payment-confirmation/{order_id}")
 async def send_payment_confirmation_email(
     order_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint to send payment confirmation (called by webhook)."""
-    order = db.query(SiteOrder).filter(SiteOrder.id == order_id).first()
+    result = await db.execute(select(SiteOrder).where(SiteOrder.id == order_id))
+    order = result.scalar_one_or_none()
+    
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
@@ -102,10 +109,12 @@ async def send_payment_confirmation_email(
 @router.post("/send-onboarding-complete/{order_id}")
 async def send_onboarding_complete_email(
     order_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint to send onboarding complete email."""
-    order = db.query(SiteOrder).filter(SiteOrder.id == order_id).first()
+    result = await db.execute(select(SiteOrder).where(SiteOrder.id == order_id))
+    order = result.scalar_one_or_none()
+    
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 

@@ -1,12 +1,9 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
 from app.core.auth import verify_token
 from app.models.user import User, UserRole
-
-security = HTTPBearer()
 
 def get_user_role_str(user: User) -> str:
     """Retorna o role do usuário como string"""
@@ -23,10 +20,31 @@ def is_user_role(user: User, role: UserRole) -> bool:
     return role_str == role.value
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> User:
-    token = credentials.credentials
+    # Get token directly from request headers to avoid validation errors
+    token = None
+    
+    # Try multiple header name variations
+    auth_header = (
+        request.headers.get("authorization") or 
+        request.headers.get("Authorization") or 
+        request.headers.get("AUTHORIZATION")
+    )
+    
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        else:
+            token = auth_header.strip()
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token não fornecido"
+        )
+    
     payload = verify_token(token)
     
     if not payload:

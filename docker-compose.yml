@@ -18,7 +18,7 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-crm_user}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-crm_user} -d ${DB_NAME:-innexarcrm}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,6 +52,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://sales.innexar.app,https://www.sales.innexar.app}
       GROK_API_KEY: ${GROK_API_KEY:-}
+    volumes:
+      - ./data/generated_sites:/app/generated_sites
     networks:
       - fixelo_fixelo-network
     labels:
@@ -70,6 +72,54 @@ services:
       - "traefik.http.routers.crm-api.service=crm-api"
       - "traefik.http.services.crm-api.loadbalancer.server.port=8000"
       - "traefik.docker.network=fixelo_fixelo-network"
+
+  celery-worker:
+    build: ./backend
+    container_name: crm-celery-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-crm_user}:${DB_PASSWORD:-senha_forte_aqui}@postgres:5432/${DB_NAME:-innexarcrm}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    volumes:
+      - ./data/generated_sites:/app/generated_sites
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 --queues=site_generation
+    networks:
+      - fixelo_fixelo-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  celery-beat:
+    build: ./backend
+    container_name: crm-celery-beat
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-crm_user}:${DB_PASSWORD:-senha_forte_aqui}@postgres:5432/${DB_NAME:-innexarcrm}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    command: celery -A app.celery_app beat --loglevel=info
+    networks:
+      - fixelo_fixelo-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   frontend:
     build: ./frontend

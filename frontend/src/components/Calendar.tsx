@@ -55,24 +55,24 @@ export default function Calendar({ events, onDateClick, onEventClick }: Calendar
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-slate-900 border border-white/10 rounded-lg shadow p-6">
       {/* Header do Calendário */}
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={prevMonth}
-          className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+          className="p-2 hover:bg-white/5 rounded-md transition-colors text-slate-400 hover:text-white"
           aria-label="Mês anterior"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h3 className="text-xl font-semibold text-gray-900">
+        <h3 className="text-xl font-semibold text-white">
           {format(currentMonth, 'MMMM yyyy')}
         </h3>
         <button
           onClick={nextMonth}
-          className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+          className="p-2 hover:bg-white/5 rounded-md transition-colors text-slate-400 hover:text-white"
           aria-label="Próximo mês"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,7 +84,7 @@ export default function Calendar({ events, onDateClick, onEventClick }: Calendar
       {/* Dias da semana */}
       <div className="grid grid-cols-7 gap-1 mb-2">
         {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
-          <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+          <div key={day} className="text-center text-sm font-medium text-slate-500 py-2">
             {day}
           </div>
         ))}
@@ -101,11 +101,10 @@ export default function Calendar({ events, onDateClick, onEventClick }: Calendar
             <div
               key={idx}
               onClick={() => onDateClick && onDateClick(day)}
-              className={`min-h-[100px] p-2 border border-gray-200 rounded-md cursor-pointer transition-all hover:bg-gray-50 ${
-                !isCurrentMonth ? 'opacity-30' : ''
-              } ${isCurrentDay ? 'bg-blue-50 border-blue-300' : ''}`}
+              className={`min-h-[100px] p-2 border border-white/10 rounded-md cursor-pointer transition-all hover:bg-white/5 ${!isCurrentMonth ? 'opacity-30' : ''
+                } ${isCurrentDay ? 'bg-blue-900/20 border-blue-500/30' : ''}`}
             >
-              <div className={`text-sm font-medium mb-1 ${isCurrentDay ? 'text-blue-600' : 'text-gray-700'}`}>
+              <div className={`text-sm font-medium mb-1 ${isCurrentDay ? 'text-blue-400' : 'text-slate-300'}`}>
                 {format(day, 'd')}
               </div>
               <div className="space-y-1">
@@ -124,7 +123,7 @@ export default function Calendar({ events, onDateClick, onEventClick }: Calendar
                   </div>
                 ))}
                 {dayEvents.length > 3 && (
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-slate-500">
                     +{dayEvents.length - 3} mais
                   </div>
                 )}

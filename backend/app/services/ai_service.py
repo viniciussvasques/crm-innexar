@@ -11,6 +11,7 @@ from app.models.ai_config import AITaskRouting, AIConfig
 import httpx
 import json
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class AIService:
             "grok",
             "mistral",
             "cohere",
+            "deepseek",
         }
 
         if provider_requires_key and not primary_config.api_key:
@@ -104,10 +106,90 @@ class AIService:
             return await self._call_google(config, prompt, system, temperature)
         elif config.provider == "grok":
             return await self._call_openai(config, prompt, system, temperature, base_url="https://api.x.ai/v1")
+        elif config.provider == "deepseek":
+            return await self._call_openai(config, prompt, system, temperature, base_url="https://api.deepseek.com")
         elif config.provider == "ollama":
             return await self._call_ollama(config, prompt, system, temperature)
+        elif config.provider == "cohere":
+            return await self._call_cohere(config, prompt, system, temperature)
+        elif config.provider == "cloudflare":
+            return await self._call_cloudflare(config, prompt, system, temperature)
         else:
             raise ValueError(f"Provider {config.provider} not implemented in AIService yet.")
+
+    async def _call_cloudflare(self, config, prompt, system, temperature):
+        # Config example:
+        # base_url="https://api.cloudflare.com/client/v4/accounts/{ID}/ai/run"
+        # model="@cf/meta/llama-3-8b-instruct"
+        # Full URL: base_url + "/" + model
+        # OU: account_id no config -> constrói base_url automaticamente
+        
+        # Se base_url não estiver configurada, tentar construir a partir do account_id no config
+        base = config.base_url
+        if not base and config.config:
+            account_id = config.config.get("account_id")
+            if account_id:
+                base = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run"
+        
+        if not base:
+            raise ValueError("Base URL ou Account ID é necessário para Cloudflare")
+        
+        base = base.rstrip("/")
+        model_name = config.model_name.lstrip("/")
+        
+        # Ensure model_name starts with @cf/ or @hf/ if it's a Cloudflare model
+        if not model_name.startswith('@cf/') and not model_name.startswith('@hf/'):
+            # If it doesn't start with @cf/ or @hf/, try to add it
+            if '/' not in model_name:
+                model_name = f"@cf/meta/{model_name}"
+            else:
+                model_name = f"@cf/{model_name}"
+        
+        url = f"{base}/{model_name}"
+        
+        headers = {
+            "Authorization": f"Bearer {config.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        
+        # Use longer timeout for code generation (5 minutes)
+        # Cloudflare models can take time for large code generation tasks
+        # Use explicit Timeout object to ensure it's applied correctly
+        timeout = httpx.Timeout(300.0, connect=30.0)  # 5 min total, 30s connect
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                resp = await client.post(url, headers=headers, json={
+                    "messages": messages,
+                    "max_tokens": 4096
+                })
+                resp.raise_for_status()
+                data = resp.json()
+                # Cloudflare response format: { "success": true, "result": { "response": "..." } }
+                return {"content": data["result"]["response"]}
+            except httpx.ReadTimeout as e:
+                # Log the REAL error first
+                logger.error("Cloudflare API timeout: %r", e)
+                logger.error("Cloudflare API timeout traceback:\n%s", traceback.format_exc())
+                error_msg = f"Cloudflare API timeout after 300 seconds. The model may be processing a large request. Please try again."
+                raise ValueError(error_msg) from e
+            except httpx.HTTPStatusError as e:
+                # Log the REAL error first with response details
+                logger.error("Cloudflare API HTTP error %d: %r", e.response.status_code, e)
+                logger.error("Cloudflare API HTTP error traceback:\n%s", traceback.format_exc())
+                response_text = e.response.text[:500] if e.response.text else "Empty response"
+                error_msg = f"Cloudflare API error {e.response.status_code}: {response_text}"
+                raise ValueError(error_msg) from e
+            except Exception as e:
+                # Log the REAL error first
+                logger.error("Cloudflare API general error: %r", e)
+                logger.error("Cloudflare API general error traceback:\n%s", traceback.format_exc())
+                error_msg = f"Cloudflare API error: {str(e) or repr(e)}"
+                raise ValueError(error_msg) from e
 
     async def _call_openai(self, config, prompt, system, temperature, base_url=None):
         url = (base_url or config.base_url or "https://api.openai.com/v1") + "/chat/completions"
@@ -191,3 +273,26 @@ class AIService:
             resp.raise_for_status()
             data = resp.json()
             return {"content": data["response"]}
+
+    async def _call_cohere(self, config, prompt, system, temperature):
+         url = "https://api.cohere.com/v1/chat"
+         headers = {
+            "Authorization": f"Bearer {config.api_key}",
+            "Content-Type": "application/json",
+            "X-Client-Name": "Innexar-CRM"
+         }
+         
+         body = {
+             "model": config.model_name,
+             "message": prompt,
+             "temperature": temperature,
+         }
+         
+         if system:
+             body["preamble"] = system
+             
+         async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, headers=headers, json=body)
+            resp.raise_for_status()
+            data = resp.json()
+            return {"content": data["text"]}

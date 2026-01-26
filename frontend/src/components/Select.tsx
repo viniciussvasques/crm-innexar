@@ -15,15 +15,14 @@ export default function Select({ label, error, options, className = '', ...props
   return (
     <div>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-slate-300 mb-1">
           {label}
           {props.required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
       <select
-        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors ${
-          error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
-        } ${className}`}
+        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors bg-slate-900 text-white ${error ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500' : 'border-white/10'
+          } ${className}`}
         {...props}
       >
         {options.map((option, index) => (

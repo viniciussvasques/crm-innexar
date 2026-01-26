@@ -51,7 +51,7 @@ export default function AIConfigPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingConfig, setEditingConfig] = useState<AIConfig | null>(null)
   const [testingId, setTestingId] = useState<number | null>(null)
-  const [formData, setFormData] = useState({ name: '', provider: 'grok', model_name: '', api_key: '', base_url: '', is_active: false, is_default: false, priority: 0 })
+  const [formData, setFormData] = useState({ name: '', provider: 'grok', model_name: '', api_key: '', base_url: '', account_id: '', is_active: false, is_default: false, priority: 0 })
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -76,11 +76,20 @@ export default function AIConfigPage() {
 
   const handleOpenModal = (config?: AIConfig) => {
     if (config) {
+      // Extrair account_id da base_url se for Cloudflare
+      let account_id = ''
+      if (config.provider === 'cloudflare' && config.base_url) {
+        const match = config.base_url.match(/accounts\/([^/]+)\/ai\/run/)
+        if (match) account_id = match[1]
+      }
+      // Ou pegar do config.account_id se existir
+      if (config.config?.account_id) account_id = config.config.account_id
+      
       setEditingConfig(config)
-      setFormData({ name: config.name, provider: config.provider, model_name: config.model_name, api_key: '', base_url: config.base_url || '', is_active: config.is_active, is_default: config.is_default, priority: config.priority })
+      setFormData({ name: config.name, provider: config.provider, model_name: config.model_name, api_key: '', base_url: config.base_url || '', account_id, is_active: config.is_active, is_default: config.is_default, priority: config.priority })
     } else {
       setEditingConfig(null)
-      setFormData({ name: '', provider: 'grok', model_name: '', api_key: '', base_url: '', is_active: false, is_default: false, priority: 0 })
+      setFormData({ name: '', provider: 'grok', model_name: '', api_key: '', base_url: '', account_id: '', is_active: false, is_default: false, priority: 0 })
     }
     setShowModal(true)
   }
@@ -88,8 +97,20 @@ export default function AIConfigPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      if (editingConfig) { await api.put(`/api/ai-config/${editingConfig.id}`, formData); toast.success('Configuração atualizada!') }
-      else { await api.post('/api/ai-config', formData); toast.success('Configuração criada!') }
+      // Para Cloudflare, enviar account_id separadamente
+      const submitData = { ...formData }
+      if (formData.provider === 'cloudflare' && formData.account_id && !formData.base_url) {
+        // Não enviar base_url se account_id foi fornecido - o backend constrói automaticamente
+        delete submitData.base_url
+      }
+      
+      // Se estiver editando e api_key estiver vazio, não enviar (manter o existente)
+      if (editingConfig && (!submitData.api_key || submitData.api_key.trim() === '')) {
+        delete submitData.api_key
+      }
+      
+      if (editingConfig) { await api.put(`/api/ai-config/${editingConfig.id}`, submitData); toast.success('Configuração atualizada!') }
+      else { await api.post('/api/ai-config', submitData); toast.success('Configuração criada!') }
       setShowModal(false); loadConfigs()
     } catch (error: any) { console.error('Erro ao salvar configuração:', error); toast.error(error.response?.data?.detail || 'Erro ao salvar') }
   }
@@ -202,8 +223,16 @@ export default function AIConfigPage() {
           ) : (
             <Select label="Modelo" value={formData.model_name} onChange={(e) => setFormData({ ...formData, model_name: e.target.value })} options={modelOptions} required disabled={!formData.provider} />
           )}
-          <Input label="API Key" type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value.trim() })} placeholder={formData.provider === 'ollama' ? 'Opcional' : 'Obrigatório'} required={formData.provider !== 'ollama'} />
-          <Input label="URL Base (opcional)" value={formData.base_url} onChange={(e) => setFormData({ ...formData, base_url: e.target.value })} placeholder={formData.provider === 'ollama' ? 'http://localhost:11434' : 'Deixe vazio para usar padrão'} />
+          <Input label="API Key" type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value.trim() })} placeholder={editingConfig ? 'Deixe vazio para manter o token atual' : (formData.provider === 'ollama' ? 'Opcional' : 'Obrigatório')} required={!editingConfig && formData.provider !== 'ollama'} />
+          {formData.provider === 'cloudflare' ? (
+            <>
+              <Input label="Account ID (Cloudflare)" value={formData.account_id} onChange={(e) => setFormData({ ...formData, account_id: e.target.value.trim() })} placeholder="Seu Account ID do Cloudflare" required />
+              <Input label="URL Base (opcional - será construída automaticamente se Account ID for fornecido)" value={formData.base_url} onChange={(e) => setFormData({ ...formData, base_url: e.target.value })} placeholder="Deixe vazio para usar Account ID" />
+              <p className="text-xs text-slate-400">💡 Dica: Basta fornecer o Account ID e o Token. A URL base será construída automaticamente.</p>
+            </>
+          ) : (
+            <Input label="URL Base (opcional)" value={formData.base_url} onChange={(e) => setFormData({ ...formData, base_url: e.target.value })} placeholder={formData.provider === 'ollama' ? 'http://localhost:11434' : 'Deixe vazio para usar padrão'} />
+          )}
           <div className="flex items-center space-x-6">
             <label className="flex items-center"><input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })} className="rounded border-white/20 bg-white/5 text-blue-600" /><span className="ml-2 text-sm text-white">Ativo</span></label>
             <label className="flex items-center"><input type="checkbox" checked={formData.is_default} onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })} className="rounded border-white/20 bg-white/5 text-blue-600" /><span className="ml-2 text-sm text-white">Padrão</span></label>

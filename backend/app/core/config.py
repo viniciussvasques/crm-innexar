@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # External API
     EXTERNAL_API_TOKEN: str = "change-me-in-production-external-token"
     
+    # Frontend URL (Production Default)
+    FRONTEND_URL: str = "https://innexar.com"
+
     # Allow extra env vars to prevent startup crash
     model_config = {
         "env_file": ".env",

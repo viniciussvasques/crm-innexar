@@ -29,11 +29,15 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     
     if not customer or not verify_password(data.password, customer.password_hash):
         from fastapi import HTTPException
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Email ou senha incorretos")
     
     if not customer.email_verified:
         from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Email not verified")
+        # Return more helpful error with verification link
+        raise HTTPException(
+            status_code=403, 
+            detail="Email não verificado. Por favor, verifique seu email antes de fazer login. Se não recebeu o email, verifique sua caixa de spam ou solicite um novo email de verificação."
+        )
     
     customer.last_login = datetime.utcnow()
     await db.commit()

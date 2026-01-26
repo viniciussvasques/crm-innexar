@@ -1,7 +1,7 @@
 """
 Site Orders API - Gerenciamento de pedidos de sites Launch
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
@@ -16,11 +16,18 @@ from app.models.site_order import (
     SiteOrder, SiteOrderStatus, SiteOnboarding, SiteAddon, 
     SiteOrderAddon, SiteTemplate, SiteNiche, SiteTone, SiteCTA
 )
+from app.models.site_deliverable import SiteDeliverable, DeliverableType, DeliverableStatus
 from app.api.dependencies import get_current_user, require_admin
 from app.api.site_customers import create_customer_account
 from app.services.email_service import email_service
 from app.services.site_generator_service import SiteGeneratorService
 from app.services.ai_service import AIService
+from app.services.stripe_service import StripeService
+from app.repositories.order_repository import OrderRepository
+from app.repositories.catalog_repository import CatalogRepository
+from fastapi import Request
+import stripe
+import json
 
 
 router = APIRouter(prefix="/site-orders", tags=["site-orders"])
@@ -101,6 +108,18 @@ class SiteOrderStatusUpdate(BaseModel):
     repository_url: Optional[str] = None
 
 
+class SiteDeliverableResponse(BaseModel):
+    id: int
+    type: str
+    title: str
+    content: Optional[str]
+    status: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 class SiteOrderResponse(BaseModel):
     id: int
     customer_name: str
@@ -117,6 +136,7 @@ class SiteOrderResponse(BaseModel):
     paid_at: Optional[datetime]
     onboarding_completed_at: Optional[datetime]
     delivered_at: Optional[datetime]
+    deliverables: List[SiteDeliverableResponse] = []
 
     class Config:
         from_attributes = True
@@ -149,25 +169,15 @@ class SiteTemplateCreate(BaseModel):
 
 # ============== Order Endpoints ==============
 
-@router.get("/public/{short_id}")
+@router.get("/public/{identifier}")
 async def get_order_public(
-    short_id: str,
+    identifier: str,
     email: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get order by short_id (last 8 chars of stripe_session_id) - no auth required"""
-    # Find by matching last 8 chars of stripe_session_id
-    result = await db.execute(
-        select(SiteOrder)
-        .options(
-            selectinload(SiteOrder.onboarding),
-            selectinload(SiteOrder.addons).selectinload(SiteOrderAddon.addon)
-        )
-        .where(
-            func.upper(func.right(SiteOrder.stripe_session_id, 8)) == short_id.upper()
-        )
-    )
-    order = result.scalar_one_or_none()
+    """Get order by identifier (stripe_session_id or last 8 chars) - no auth required"""
+    repo = OrderRepository(db)
+    order = await repo.find_by_identifier(identifier)
     
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -176,8 +186,238 @@ async def get_order_public(
     if email and order.customer_email.lower() != email.lower():
         raise HTTPException(status_code=403, detail="Email does not match order")
     
+    # Eager load relationships for the response
+    # Note: Ideally this should be in the repository, but for now we rely on the session
+    # caching or we update repository to support options.
+    # For now, let's keep it simple as repository methods return objects.
+    
     return order
 
+
+@router.post("/{order_id}/onboarding")
+async def submit_onboarding(
+    order_id: str,
+    onboarding_data: SiteOnboardingCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """Cliente submete dados do onboarding"""
+    # Use the service to handle everything
+    from app.services.onboarding_service import OnboardingService
+    service = OnboardingService(db, background_tasks)
+    
+    return await service.process_onboarding(order_id, onboarding_data)
+
+
+@router.get("/{order_id}/onboarding")
+async def get_onboarding(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Obtém dados do onboarding de um pedido"""
+    repo = OrderRepository(db)
+    onboarding = await repo.get_onboarding(order_id)
+    
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Onboarding not found")
+    
+    return onboarding
+
+
+# ============== Addon Endpoints ==============
+
+@router.get("/addons/list")
+async def list_addons(
+    active_only: bool = True,
+    db: AsyncSession = Depends(get_db)
+):
+    """Lista todos os addons disponíveis"""
+    repo = CatalogRepository(db)
+    return await repo.list_addons(active_only)
+
+
+@router.post("/addons")
+async def create_addon(
+    addon_data: SiteAddonCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Cria um novo addon"""
+    repo = CatalogRepository(db)
+    addon = SiteAddon(**addon_data.model_dump())
+    return await repo.create_addon(addon)
+
+
+@router.patch("/addons/{addon_id}")
+async def update_addon(
+    addon_id: int,
+    addon_data: SiteAddonCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza um addon"""
+    repo = CatalogRepository(db)
+    addon = await repo.get_addon(addon_id)
+    if not addon:
+        raise HTTPException(status_code=404, detail="Addon not found")
+    
+    for key, value in addon_data.model_dump().items():
+        setattr(addon, key, value)
+    
+    return await repo.update_addon(addon)
+
+
+# ============== Template Endpoints ==============
+
+@router.get("/templates/list")
+async def list_templates(
+    niche: Optional[SiteNiche] = None,
+    active_only: bool = True,
+    db: AsyncSession = Depends(get_db)
+):
+    """Lista templates disponíveis"""
+    repo = CatalogRepository(db)
+    return await repo.list_templates(niche, active_only)
+
+
+@router.post("/templates")
+async def create_template(
+    template_data: SiteTemplateCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Cria um novo template"""
+    repo = CatalogRepository(db)
+    template = SiteTemplate(**template_data.model_dump())
+    return await repo.create_template(template)
+
+
+@router.patch("/templates/{template_id}")
+async def update_template(
+    template_id: int,
+    template_data: SiteTemplateCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza um template"""
+    repo = CatalogRepository(db)
+    template = await repo.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    for key, value in template_data.model_dump().items():
+        setattr(template, key, value)
+    
+    return await repo.update_template(template)
+
+# ============== Restored Endpoints ==============
+
+@router.post("/checkout")
+async def create_checkout(
+    order_data: SiteOrderCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create Stripe Checkout Session"""
+    stripe_service = StripeService(db)
+    
+    # Success/Cancel URLs (should be configured or passed from frontend)
+    from app.core.config import settings
+    domain = settings.FRONTEND_URL
+    # Redirect directly to onboarding using session_id
+    success_url = f"{domain}/en/launch/onboarding?order_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{domain}/en/launch/cancel"
+    
+    print(f"DEBUG: Redirect Success URL: {success_url}")
+    
+    session = await stripe_service.create_checkout_session(
+        order_data=order_data.model_dump(),
+        success_url=success_url,
+        cancel_url=cancel_url
+    )
+    
+    return {"id": session.id, "url": session.url}
+
+@router.post("/webhook")
+async def stripe_webhook(
+    request: Request,
+    stripe_signature: str = Header(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Stripe Webhook Handler"""
+    stripe_service = StripeService(db)
+    payload = await request.body()
+    
+    try:
+        print(f"DEBUG: Webhook received. Processing payload...")
+        event = await stripe_service.construct_event(payload, stripe_signature)
+    except Exception as e:
+        print(f"DEBUG: Webhook Signature Verification Failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    print(f"DEBUG: Webhook verified. Event Type: {event['type']}")
+    
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        print(f"DEBUG: Processing checkout.session.completed: {session['id']}")
+        
+        # Here we would create the order securely
+        customer_email = session.get("customer_details", {}).get("email")
+        customer_name = session.get("customer_details", {}).get("name")
+        total_price = session.get("amount_total", 0) / 100.0
+        
+        # Check if order already exists
+        result = await db.execute(
+            select(SiteOrder).where(SiteOrder.stripe_session_id == session["id"])
+        )
+        existing_order = result.scalar_one_or_none()
+        
+        if existing_order:
+            print(f"DEBUG: Order already exists: {existing_order.id}, Status: {existing_order.status}")
+            # Idempotency: Order already created
+            if existing_order.status == SiteOrderStatus.PENDING_PAYMENT:
+                existing_order.status = SiteOrderStatus.PAID
+                existing_order.paid_at = datetime.utcnow()
+                await db.commit()
+                print(f"DEBUG: Order {existing_order.id} updated to PAID")
+        else:
+            print("DEBUG: Creating NEW order...")
+            # Create new order
+            order = SiteOrder(
+                customer_name=customer_name or "Cliente Desconhecido",
+                customer_email=customer_email or "",
+                stripe_session_id=session["id"],
+                stripe_customer_id=session.get("customer"),
+                stripe_payment_intent_id=session.get("payment_intent"),
+                total_price=total_price,
+                status=SiteOrderStatus.PAID,
+                paid_at=datetime.utcnow(),
+                expected_delivery_date=datetime.utcnow() + timedelta(days=5)
+            )
+            
+            db.add(order)
+            await db.commit()
+            await db.refresh(order)
+            print(f"DEBUG: New Order Created! ID: {order.id}")
+            
+            # Send payment confirmation email
+            try:
+                print(f"DEBUG: Sending confirmation email for order {order.id}")
+                await email_service.send_payment_confirmation(
+                    order={
+                        "id": order.id, 
+                        "customer_name": order.customer_name, 
+                        "customer_email": order.customer_email, 
+                        "total_price": order.total_price
+                    }
+                )
+                print("DEBUG: Email sent successfully")
+            except Exception as e:
+                print(f"DEBUG: Failed to send email: {e}")
+            
+            print(f"✅ Order Flow Complete! ID: {order.id}")
+            
+    return {"status": "success"}
 
 @router.get("/")
 async def list_orders(
@@ -190,7 +430,8 @@ async def list_orders(
     """Lista todos os pedidos de site (admin only)"""
     query = select(SiteOrder).options(
         selectinload(SiteOrder.onboarding),
-        selectinload(SiteOrder.addons)
+        selectinload(SiteOrder.addons).selectinload(SiteOrderAddon.addon),
+        selectinload(SiteOrder.deliverables)  # CRITICAL: Load deliverables for Creation Journey
     ).order_by(SiteOrder.created_at.desc())
     
     if status_filter:
@@ -202,6 +443,65 @@ async def list_orders(
     
     return orders
 
+@router.post("/auto-start-stuck-orders")
+async def auto_start_stuck_orders(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Automatically start generation for orders that are BUILDING with completed onboarding
+    but haven't started generation yet. This ensures the system is fully automatic.
+    """
+    from sqlalchemy.orm import selectinload
+    from app.tasks.site_generation import generate_site_task
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Find orders that are BUILDING with completed onboarding but not generating
+    result = await db.execute(
+        select(SiteOrder)
+        .options(selectinload(SiteOrder.onboarding))
+        .where(SiteOrder.status == SiteOrderStatus.BUILDING)
+        .where(SiteOrder.onboarding_completed_at.isnot(None))
+    )
+    stuck_orders = result.scalars().all()
+    
+    started = []
+    errors = []
+    
+    for order in stuck_orders:
+        if order.onboarding:  # Only if onboarding exists
+            try:
+                # Update status to GENERATING
+                order.status = SiteOrderStatus.GENERATING
+                order.admin_notes = f"Auto-started generation (was stuck in BUILDING). Original: {order.admin_notes or 'N/A'}"
+                await db.commit()
+                
+                # Start generation
+                celery_task = generate_site_task.delay(order.id, resume=True)
+                started.append({
+                    "order_id": order.id,
+                    "task_id": celery_task.id,
+                    "customer_email": order.customer_email
+                })
+                logger.info(f"✅ Auto-started generation for stuck order {order.id} (task: {celery_task.id})")
+            except Exception as e:
+                errors.append({
+                    "order_id": order.id,
+                    "error": str(e)
+                })
+                logger.error(f"❌ Failed to auto-start order {order.id}: {e}", exc_info=True)
+                await db.rollback()
+    
+    return {
+        "success": True,
+        "started_count": len(started),
+        "errors_count": len(errors),
+        "started_orders": started,
+        "errors": errors,
+        "message": f"Auto-started generation for {len(started)} stuck orders"
+    }
 
 @router.get("/stats")
 async def get_order_stats(
@@ -209,31 +509,173 @@ async def get_order_stats(
     current_user: User = Depends(require_admin)
 ):
     """Estatísticas de pedidos"""
-    # Total por status
-    status_counts = await db.execute(
-        select(SiteOrder.status, func.count(SiteOrder.id))
-        .group_by(SiteOrder.status)
-    )
+    from app.core.database import AsyncSessionLocal
     
-    # Revenue total
-    revenue = await db.execute(
-        select(func.sum(SiteOrder.total_price))
-        .where(SiteOrder.status != SiteOrderStatus.CANCELLED)
-    )
+    # Use a separate session to avoid conflicts with ongoing operations
+    async with AsyncSessionLocal() as stats_session:
+        # Total por status
+        status_counts = await stats_session.execute(
+            select(SiteOrder.status, func.count(SiteOrder.id))
+            .group_by(SiteOrder.status)
+        )
+        
+        # Revenue total
+        revenue = await stats_session.execute(
+            select(func.sum(SiteOrder.total_price))
+            .where(SiteOrder.status != SiteOrderStatus.CANCELLED)
+        )
+        
+        # Pedidos este mês
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_orders = await stats_session.execute(
+            select(func.count(SiteOrder.id))
+            .where(SiteOrder.created_at >= month_start)
+        )
+        
+        return {
+            "status_counts": dict(status_counts.all()),
+            "total_revenue": revenue.scalar() or 0,
+            "orders_this_month": monthly_orders.scalar() or 0
+        }
+
+# IMPORTANTE: Rotas específicas DEVEM vir ANTES das rotas dinâmicas {order_id}
+# Caso contrário, o FastAPI tentará interpretar strings como "check-empty-generations" como order_id
+
+@router.get("/check-empty-generations")
+async def check_empty_generations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Check orders in GENERATING status that have no generated files"""
+    import os
+    from app.services.site_generator_service import SiteGeneratorService
     
-    # Pedidos este mês
-    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    monthly_orders = await db.execute(
-        select(func.count(SiteOrder.id))
-        .where(SiteOrder.created_at >= month_start)
+    # Get all orders in GENERATING status
+    result = await db.execute(
+        select(SiteOrder)
+        .where(SiteOrder.status == SiteOrderStatus.GENERATING)
     )
+    generating_orders = result.scalars().all()
+    
+    service = SiteGeneratorService(db)
+    empty_orders = []
+    valid_orders = []
+    
+    for order in generating_orders:
+        target_dir = service._get_target_dir(order.id)
+        stage_info = service._check_stage_files(target_dir)
+        
+        # Consider empty if no files or very few files (< 5)
+        if stage_info["files_count"] < 5:
+            empty_orders.append({
+                "order_id": order.id,
+                "customer_name": order.customer_name,
+                "customer_email": order.customer_email,
+                "status": order.status.value,
+                "files_count": stage_info["files_count"],
+                "current_stage": stage_info["current_stage"],
+                "has_directory": os.path.exists(target_dir),
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "onboarding_completed_at": order.onboarding_completed_at.isoformat() if order.onboarding_completed_at else None
+            })
+        else:
+            valid_orders.append({
+                "order_id": order.id,
+                "customer_name": order.customer_name,
+                "files_count": stage_info["files_count"]
+            })
     
     return {
-        "status_counts": dict(status_counts.all()),
-        "total_revenue": revenue.scalar() or 0,
-        "orders_this_month": monthly_orders.scalar() or 0
+        "total_generating": len(generating_orders),
+        "empty_generations": len(empty_orders),
+        "valid_generations": len(valid_orders),
+        "empty_orders": empty_orders,
+        "valid_orders": valid_orders
     }
 
+@router.post("/reset-empty-generations")
+async def reset_empty_generations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Reset all orders in GENERATING status that have no generated files and automatically start generation"""
+    import os
+    import shutil
+    import threading
+    import logging
+    from app.services.site_generator_service import SiteGeneratorService
+    
+    logger = logging.getLogger(__name__)
+    
+    # Get all orders in GENERATING status with onboarding loaded
+    result = await db.execute(
+        select(SiteOrder)
+        .options(selectinload(SiteOrder.onboarding))
+        .where(SiteOrder.status == SiteOrderStatus.GENERATING)
+    )
+    generating_orders = result.scalars().all()
+    
+    reset_orders = []
+    errors = []
+    auto_started = []
+    
+    # Import Celery task
+    from app.tasks.site_generation import generate_site_task
+    
+    for order in generating_orders:
+        # Use static path calculation to avoid session conflicts
+        target_dir = os.path.abspath(os.path.join(os.getcwd(), "generated_sites", f"project_{order.id}"))
+        
+        # Check stage files manually
+        stage_info = {"current_stage": "none", "stages": {}, "files_count": 0}
+        if os.path.exists(target_dir):
+            files_count = 0
+            for root, dirs, files in os.walk(target_dir):
+                files_count += len(files)
+            stage_info["files_count"] = files_count
+            if files_count > 0:
+                stage_info["current_stage"] = "phase_2"
+        
+        # Consider empty if no files or very few files (< 5)
+        if stage_info["files_count"] < 5:
+            try:
+                # Remove directory if it exists
+                if os.path.exists(target_dir):
+                    shutil.rmtree(target_dir)
+                
+                # Reset status to BUILDING
+                order.status = SiteOrderStatus.BUILDING
+                order.admin_notes = f"Auto-reset: Generation had {stage_info['files_count']} files (too few). Auto-starting generation..."
+                await db.commit()
+                
+                reset_orders.append({
+                    "order_id": order.id,
+                    "customer_name": order.customer_name,
+                    "files_removed": stage_info["files_count"]
+                })
+                
+                # Automatically start generation if onboarding is complete
+                if order.onboarding:
+                    celery_task = generate_site_task.delay(order.id, resume=True)
+                    auto_started.append(order.id)
+                    logger.info(f"Enqueued Celery task {celery_task.id} for order {order.id} after bulk reset")
+                
+            except Exception as e:
+                errors.append({
+                    "order_id": order.id,
+                    "error": str(e)
+                })
+    
+    return {
+        "success": True,
+        "reset_count": len(reset_orders),
+        "errors_count": len(errors),
+        "auto_started_count": len(auto_started),
+        "reset_orders": reset_orders,
+        "auto_started_orders": auto_started,
+        "errors": errors,
+        "message": f"Reset {len(reset_orders)} orders and automatically started generation for {len(auto_started)} orders"
+    }
 
 @router.get("/{order_id}")
 async def get_order(
@@ -246,7 +688,8 @@ async def get_order(
         select(SiteOrder)
         .options(
             selectinload(SiteOrder.onboarding),
-            selectinload(SiteOrder.addons).selectinload(SiteOrderAddon.addon)
+            selectinload(SiteOrder.addons).selectinload(SiteOrderAddon.addon),
+            selectinload(SiteOrder.deliverables)
         )
         .where(SiteOrder.id == order_id)
     )
@@ -256,77 +699,6 @@ async def get_order(
         raise HTTPException(status_code=404, detail="Order not found")
     
     return order
-
-
-@router.post("/")
-async def create_order(
-    order_data: SiteOrderCreate,
-    db: AsyncSession = Depends(get_db)
-):
-    """Cria um novo pedido (chamado pelo webhook do Stripe)"""
-    order = SiteOrder(
-        customer_name=order_data.customer_name,
-        customer_email=order_data.customer_email,
-        customer_phone=order_data.customer_phone,
-        stripe_session_id=order_data.stripe_session_id,
-        stripe_customer_id=order_data.stripe_customer_id,
-        total_price=order_data.total_price,
-        status=SiteOrderStatus.PAID,
-        paid_at=datetime.utcnow(),
-        expected_delivery_date=datetime.utcnow() + timedelta(days=5)
-    )
-    
-    db.add(order)
-    await db.flush()
-    
-    # Adiciona addons
-    for addon_id in order_data.addon_ids:
-        addon = await db.get(SiteAddon, addon_id)
-        if addon:
-            order_addon = SiteOrderAddon(
-                order_id=order.id,
-                addon_id=addon_id,
-                price_paid=addon.price
-            )
-            db.add(order_addon)
-    
-    await db.commit()
-    await db.refresh(order)
-    
-    return order
-
-
-@router.patch("/{order_id}/status")
-async def update_order_status(
-    order_id: int,
-    status_data: SiteOrderStatusUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """Atualiza status de um pedido"""
-    order = await db.get(SiteOrder, order_id)
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    
-    order.status = status_data.status
-    
-    if status_data.admin_notes:
-        order.admin_notes = status_data.admin_notes
-    if status_data.site_url:
-        order.site_url = status_data.site_url
-    if status_data.repository_url:
-        order.repository_url = status_data.repository_url
-    
-    # Atualiza timestamps especiais
-    if status_data.status == SiteOrderStatus.DELIVERED:
-        order.delivered_at = datetime.utcnow()
-        order.actual_delivery_date = datetime.utcnow()
-    
-    await db.commit()
-    await db.refresh(order)
-    
-    return order
-
 
 @router.post("/{order_id}/build")
 async def trigger_build(
@@ -364,297 +736,149 @@ async def trigger_build(
     order.status = SiteOrderStatus.GENERATING
     await db.commit()
     
-    # Wrapper function for background task with its own session
-    # IMPORTANT: BackgroundTasks runs in a thread pool, so we need to use asyncio.run()
-    def run_generation_sync(order_id: int):
-        import asyncio
-        from app.core.database import AsyncSessionLocal
-        
-        async def _generate():
-            async with AsyncSessionLocal() as session:
-                service = SiteGeneratorService(session)
-                await service.generate_site(order_id)
-        
-        # Create new event loop for background thread
-        asyncio.run(_generate())
+    # Enqueue Celery task instead of threading
+    from app.tasks.site_generation import generate_site_task
+    import logging
     
-    # Executa geração em background (função síncrona)
-    background_tasks.add_task(run_generation_sync, order_id)
+    logger = logging.getLogger(__name__)
     
-    return {"message": "Build started", "order_id": order_id}
+    celery_task = generate_site_task.delay(order_id, resume=True)
+    logger.info(f"Enqueued Celery task {celery_task.id} for order {order_id}")
+    
+    return {
+        "message": "Build started",
+        "order_id": order_id,
+        "task_id": celery_task.id,
+        "status": "queued"
+    }
 
-
-# ============== Onboarding Endpoints ==============
-
-
-@router.post("/{order_id}/onboarding")
-async def submit_onboarding(
-    order_id: str,
-    onboarding_data: SiteOnboardingCreate,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+@router.get("/{order_id}/logs")
+async def get_order_logs(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Cliente submete dados do onboarding"""
-    # Try to find order by exact stripe_session_id match
+    """Retorna os logs de geração para um pedido"""
+    repo = OrderRepository(db)
+    
+    # Verify order exists first
+    order = await repo.get_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+        
+    return await repo.get_logs(order_id)
+
+@router.patch("/{order_id}/status")
+async def update_order_status(
+    order_id: int,
+    status_update: SiteOrderStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza o status de um pedido"""
     result = await db.execute(
-        select(SiteOrder).where(SiteOrder.stripe_session_id == order_id)
+        select(SiteOrder)
+        .where(SiteOrder.id == order_id)
     )
     order = result.scalar_one_or_none()
-    
-    # If not found, try matching by last 8 chars of stripe_session_id (case insensitive)
-    if not order:
-        result = await db.execute(
-            select(SiteOrder).where(
-                func.upper(func.right(SiteOrder.stripe_session_id, 8)) == order_id.upper()
-            )
-        )
-        order = result.scalar_one_or_none()
-    
-    # If still not found, try as numeric id
-    if not order and order_id.isdigit():
-        order = await db.get(SiteOrder, int(order_id))
     
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
-    if order.onboarding_completed_at:
-        raise HTTPException(status_code=400, detail="Onboarding already completed")
+    # Update status
+    order.status = status_update.status
     
-    onboarding = SiteOnboarding(
-        order_id=order.id,
-        # Step 1: Business Identity
-        business_name=onboarding_data.business_name,
-        business_email=onboarding_data.business_email,
-        business_phone=onboarding_data.business_phone,
-        has_whatsapp=onboarding_data.has_whatsapp,
-        business_address=onboarding_data.business_address,
-        # Step 2: Niche & Location
-        niche=onboarding_data.niche,
-        custom_niche=onboarding_data.custom_niche,
-        primary_city=onboarding_data.primary_city,
-        state=onboarding_data.state,
-        service_areas=onboarding_data.service_areas,
-        # Step 3: Services
-        services=onboarding_data.services,
-        primary_service=onboarding_data.primary_service,
-        # Step 4: Site Objective & Pages
-        site_objective=onboarding_data.site_objective,
-        site_description=onboarding_data.site_description,
-        selected_pages=onboarding_data.selected_pages,
-        total_pages=onboarding_data.total_pages or 5,
-        tone=onboarding_data.tone,
-        primary_cta=onboarding_data.primary_cta,
-        cta_text=onboarding_data.cta_text,
-        # Step 5: Design & Colors
-        primary_color=onboarding_data.primary_color,
-        secondary_color=onboarding_data.secondary_color,
-        accent_color=onboarding_data.accent_color,
-        reference_sites=onboarding_data.reference_sites,
-        design_notes=onboarding_data.design_notes,
-        # Step 6: Business Details
-        business_hours=onboarding_data.business_hours,
-        social_facebook=onboarding_data.social_facebook,
-        social_instagram=onboarding_data.social_instagram,
-        social_linkedin=onboarding_data.social_linkedin,
-        social_youtube=onboarding_data.social_youtube,
-        # Step 7: Testimonials & About
-        testimonials=onboarding_data.testimonials,
-        google_reviews_link=onboarding_data.google_reviews_link,
-        about_owner=onboarding_data.about_owner,
-        years_in_business=onboarding_data.years_in_business,
-        # Metadata
-        is_complete=onboarding_data.is_complete,
-        completed_steps=onboarding_data.completed_steps,
-    )
+    # Update optional fields if provided
+    if status_update.admin_notes is not None:
+        order.admin_notes = status_update.admin_notes
+    if status_update.site_url is not None:
+        order.site_url = status_update.site_url
+    if status_update.repository_url is not None:
+        order.repository_url = status_update.repository_url
     
-    db.add(onboarding)
-    
-    # Atualiza status do pedido
-    order.status = SiteOrderStatus.BUILDING
-    order.onboarding_completed_at = datetime.utcnow()
-    order.expected_delivery_date = datetime.utcnow() + timedelta(days=order.delivery_days)
-    
-    # Create customer account for portal access
-    temp_password = None
-    verification_token = None
-    try:
-        customer, temp_password = await create_customer_account(
-            db=db,
-            order_id=order.id,
-            email=order.customer_email,
-            password=onboarding_data.password
-        )
-        verification_token = customer.verification_token
-        
-        # Send verification email in background
-        background_tasks.add_task(
-            email_service.send_verification_email,
-            customer_name=order.customer_name,
-            to_email=customer.email,
-            temp_password=temp_password,
-            verification_token=verification_token
-        )
-    except HTTPException as e:
-        # If the specific error is that customer exists for this order, we can ignore if it's a re-submission
-        if e.status_code != 400 or "already exists" not in str(e.detail):
-             raise e
-    except IntegrityError as e:
-        # Handle duplicate email (if someone uses an email already taken by another account)
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "EMAIL_ALREADY_EXISTS",
-                "message": "Este e-mail já está cadastrado. Por favor, faça login para continuar.",
-                "field": "email"
-            }
-        )
-
     await db.commit()
-    
-    # Wrapper function for background task with its own session
-    # IMPORTANT: BackgroundTasks runs in a thread pool, so we need to use asyncio.run()
-    def run_generation_sync(order_id_int: int):
-        import asyncio
-        from app.core.database import AsyncSessionLocal
-        
-        async def _generate():
-            async with AsyncSessionLocal() as session:
-                service = SiteGeneratorService(session)
-                await service.generate_site(order_id_int)
-        
-        # Create new event loop for background thread
-        asyncio.run(_generate())
-    
-    # Auto-trigger AI generation in background (função síncrona)
-    background_tasks.add_task(run_generation_sync, order.id)
+    await db.refresh(order)
     
     return {
-        "message": "Onboarding submitted successfully", 
-        "order_id": order_id,
-        "account_created": temp_password is not None,
-        "verification_token": verification_token,
-        "generation_started": True
+        "message": "Status updated successfully",
+        "order_id": order.id,
+        "status": order.status.value
     }
 
-
-@router.get("/{order_id}/onboarding")
-async def get_onboarding(
+@router.post("/{order_id}/reset-generation")
+async def reset_generation(
     order_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    """Obtém dados do onboarding de um pedido"""
+    """Reset generation for an order - clears files and automatically starts generation"""
+    import os
+    import shutil
+    import threading
+    import logging
+    from app.services.site_generator_service import SiteGeneratorService
+    
+    logger = logging.getLogger(__name__)
+    
+    # Use selectinload to eager load onboarding and avoid MissingGreenlet
     result = await db.execute(
-        select(SiteOnboarding).where(SiteOnboarding.order_id == order_id)
+        select(SiteOrder)
+        .options(selectinload(SiteOrder.onboarding))
+        .where(SiteOrder.id == order_id)
     )
-    onboarding = result.scalar_one_or_none()
+    order = result.scalar_one_or_none()
     
-    if not onboarding:
-        raise HTTPException(status_code=404, detail="Onboarding not found")
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
     
-    return onboarding
-
-
-# ============== Addon Endpoints ==============
-
-@router.get("/addons/list")
-async def list_addons(
-    active_only: bool = True,
-    db: AsyncSession = Depends(get_db)
-):
-    """Lista todos os addons disponíveis"""
-    query = select(SiteAddon).order_by(SiteAddon.sort_order)
-    if active_only:
-        query = query.where(SiteAddon.is_active == True)
+    if not order.onboarding:
+        raise HTTPException(status_code=400, detail="Onboarding not completed")
     
-    result = await db.execute(query)
-    return result.scalars().all()
-
-
-@router.post("/addons")
-async def create_addon(
-    addon_data: SiteAddonCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """Cria um novo addon"""
-    addon = SiteAddon(**addon_data.model_dump())
-    db.add(addon)
+    # Get target directory (use absolute path consistent with volume mount)
+    base_dir = os.getenv("SITES_BASE_DIR", "/app/generated_sites")
+    target_dir = os.path.join(base_dir, f"project_{order_id}")
+    
+    # Check if directory exists and has files
+    has_files = False
+    files_count = 0
+    if os.path.exists(target_dir):
+        for root, dirs, files in os.walk(target_dir):
+            files_count += len(files)
+        has_files = files_count > 0
+    
+    # Remove directory if it exists
+    if os.path.exists(target_dir):
+        try:
+            shutil.rmtree(target_dir)
+            removed = True
+        except Exception as e:
+            removed = False
+            error_msg = str(e)
+    else:
+        removed = True
+        error_msg = None
+    
+    # Reset order status to BUILDING to allow retry
+    order.status = SiteOrderStatus.BUILDING
+    order.admin_notes = f"Generation reset. Previous attempt had {files_count} files. Auto-starting generation..."
     await db.commit()
-    await db.refresh(addon)
-    return addon
-
-
-@router.patch("/addons/{addon_id}")
-async def update_addon(
-    addon_id: int,
-    addon_data: SiteAddonCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """Atualiza um addon"""
-    addon = await db.get(SiteAddon, addon_id)
-    if not addon:
-        raise HTTPException(status_code=404, detail="Addon not found")
     
-    for key, value in addon_data.model_dump().items():
-        setattr(addon, key, value)
+    # Automatically trigger generation after reset using Celery
+    from app.tasks.site_generation import generate_site_task
     
-    await db.commit()
-    await db.refresh(addon)
-    return addon
-
-
-# ============== Template Endpoints ==============
-
-@router.get("/templates/list")
-async def list_templates(
-    niche: Optional[SiteNiche] = None,
-    active_only: bool = True,
-    db: AsyncSession = Depends(get_db)
-):
-    """Lista templates disponíveis"""
-    query = select(SiteTemplate).order_by(SiteTemplate.sort_order)
+    celery_task = generate_site_task.delay(order_id, resume=True)
+    logger.info(f"Enqueued Celery task {celery_task.id} for order {order_id} after reset")
     
-    if active_only:
-        query = query.where(SiteTemplate.is_active == True)
-    if niche:
-        query = query.where(SiteTemplate.niche == niche)
-    
-    result = await db.execute(query)
-    return result.scalars().all()
-
-
-@router.post("/templates")
-async def create_template(
-    template_data: SiteTemplateCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """Cria um novo template"""
-    template = SiteTemplate(**template_data.model_dump())
-    db.add(template)
-    await db.commit()
-    await db.refresh(template)
-    return template
-
-
-@router.patch("/templates/{template_id}")
-async def update_template(
-    template_id: int,
-    template_data: SiteTemplateCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """Atualiza um template"""
-    template = await db.get(SiteTemplate, template_id)
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-    
-    for key, value in template_data.model_dump().items():
-        setattr(template, key, value)
-    
-    await db.commit()
-    await db.refresh(template)
-    return template
+    return {
+        "success": True,
+        "order_id": order_id,
+        "had_files": has_files,
+        "files_removed": files_count,
+        "directory_removed": removed,
+        "new_status": order.status.value,
+        "error": error_msg,
+        "auto_generation_started": True,
+        "task_id": celery_task.id,
+        "message": "Generation reset and automatically started"
+    }

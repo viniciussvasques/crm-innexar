@@ -108,28 +108,6 @@ async def call_ai_api(prompt: str, max_tokens: int = 1000, db: Optional[AsyncSes
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao chamar API de IA: {str(e)}")
 
-async def _call_grok_api_legacy(prompt: str, max_tokens: int, api_key: str) -> str:
-    """Função legada para Grok (compatibilidade)"""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "grok-1",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": 0.7
-            },
-            timeout=60.0
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"Erro na API do Grok: {response.status_code}")
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
-
 async def _call_grok_api(prompt: str, max_tokens: int, config: AIConfig) -> str:
     """Chama a API do Grok/xAI"""
     async with httpx.AsyncClient() as client:
@@ -397,10 +375,17 @@ async def _call_cohere_api(prompt: str, max_tokens: int, config: AIConfig) -> st
 
 async def _call_cloudflare_api(prompt: str, max_tokens: int, config: AIConfig) -> str:
     """Chama a API do Cloudflare Workers AI"""
-    if not config.base_url:
+    # Se base_url não estiver configurada, tentar construir a partir do account_id no config
+    base_url = config.base_url
+    if not base_url and config.config:
+        account_id = config.config.get("account_id")
+        if account_id:
+            base_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run"
+    
+    if not base_url:
         raise HTTPException(
             status_code=500, 
-            detail="Base URL é necessária para Cloudflare. Formato: https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run"
+            detail="Base URL ou Account ID é necessário para Cloudflare. Forneça account_id na configuração ou a URL base completa."
         )
     
     if not config.api_key:
@@ -408,14 +393,28 @@ async def _call_cloudflare_api(prompt: str, max_tokens: int, config: AIConfig) -
     
     try:
         # Clean up base_url and model_name to avoid double slashes
-        base_url = config.base_url.rstrip('/')
+        base_url = base_url.rstrip('/')
         model_name = config.model_name.lstrip('/')
+        
+        # Ensure model_name starts with @cf/ if it's a Cloudflare model
+        if not model_name.startswith('@cf/') and not model_name.startswith('@hf/'):
+            # If it doesn't start with @cf/ or @hf/, assume it's a legacy format and add @cf/
+            # But first check if it's already a full model name
+            if '/' not in model_name:
+                model_name = f"@cf/meta/{model_name}"
+            else:
+                model_name = f"@cf/{model_name}"
         
         # Build the full URL
         full_url = f"{base_url}/{model_name}"
         
+        # Log for debugging (remove in production or use proper logging)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Cloudflare API call - URL: {full_url}, Model: {model_name}")
+        
         # For instruct models, use messages format; for others use prompt
-        is_instruct_model = 'instruct' in model_name.lower()
+        is_instruct_model = 'instruct' in model_name.lower() or 'it' in model_name.lower()
         
         if is_instruct_model:
             request_body = {
@@ -441,15 +440,31 @@ async def _call_cloudflare_api(prompt: str, max_tokens: int, config: AIConfig) -
             
             if response.status_code != 200:
                 error_text = response.text[:500]
+                error_detail = f"Status {response.status_code}"
                 try:
                     error_data = response.json()
                     if "errors" in error_data:
-                        error_text = str(error_data["errors"])
+                        errors = error_data["errors"]
+                        if isinstance(errors, list) and len(errors) > 0:
+                            first_error = errors[0]
+                            error_detail = f"Code {first_error.get('code', 'unknown')}: {first_error.get('message', error_text)}"
+                        else:
+                            error_detail = str(errors)
+                    elif "error" in error_data:
+                        error_detail = str(error_data["error"])
                 except:
                     pass
+                
+                # Provide more helpful error message
+                if "No route for that URI" in error_detail or "7000" in str(error_detail):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Modelo '{model_name}' não encontrado ou URL incorreta. Verifique se o modelo está disponível no seu Account ID. URL tentada: {full_url}"
+                    )
+                
                 raise HTTPException(
                     status_code=500, 
-                    detail=f"Erro na API do Cloudflare ({response.status_code}): {error_text}"
+                    detail=f"Erro na API do Cloudflare: {error_detail}"
                 )
             
             data = response.json()

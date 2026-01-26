@@ -15,6 +15,12 @@
 /* Dark Theme Base */
 body {
   @apply bg-slate-950 text-white antialiased;
+  color-scheme: dark;
+}
+
+/* Force dark options for selects */
+option {
+  @apply bg-slate-900 text-white;
 }
 
 /* Custom Scrollbar */
@@ -50,21 +56,25 @@ body {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 .shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
   background-size: 200% 100%;
   animation: shimmer 2s infinite;
 }
 
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
   }
+
   50% {
     box-shadow: 0 0 40px rgba(59, 130, 246, 0.5);
   }
@@ -75,25 +85,23 @@ body {
 }
 
 /* Focus States */
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   @apply outline-none ring-2 ring-blue-500/50 border-blue-500/50;
 }
 
 /* Button Base */
 .btn-primary {
-  @apply px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl text-white font-medium 
-         shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 
-         transition-all duration-200 active:scale-95;
+  @apply px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl text-white font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 active:scale-95;
 }
 
 .btn-secondary {
-  @apply px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/10 
-         rounded-xl text-white font-medium transition-all duration-200 active:scale-95;
+  @apply px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl text-white font-medium transition-all duration-200 active:scale-95;
 }
 
 .btn-danger {
-  @apply px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 
-         rounded-xl text-red-400 font-medium transition-all duration-200 active:scale-95;
+  @apply px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl text-red-400 font-medium transition-all duration-200 active:scale-95;
 }
 
 /* Card Styles */
@@ -107,13 +115,26 @@ input:focus, select:focus, textarea:focus {
 
 /* Input Styles */
 .input {
-  @apply w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl 
-         text-white placeholder-slate-500 transition-all duration-200;
+  @apply w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 transition-all duration-200;
 }
 
 /* Status Colors */
-.status-success { @apply bg-green-500/20 text-green-400 border-green-500/30; }
-.status-warning { @apply bg-yellow-500/20 text-yellow-400 border-yellow-500/30; }
-.status-error { @apply bg-red-500/20 text-red-400 border-red-500/30; }
-.status-info { @apply bg-blue-500/20 text-blue-400 border-blue-500/30; }
-.status-purple { @apply bg-purple-500/20 text-purple-400 border-purple-500/30; }
+.status-success {
+  @apply bg-green-500/20 text-green-400 border-green-500/30;
+}
+
+.status-warning {
+  @apply bg-yellow-500/20 text-yellow-400 border-yellow-500/30;
+}
+
+.status-error {
+  @apply bg-red-500/20 text-red-400 border-red-500/30;
+}
+
+.status-info {
+  @apply bg-blue-500/20 text-blue-400 border-blue-500/30;
+}
+
+.status-purple {
+  @apply bg-purple-500/20 text-purple-400 border-purple-500/30;
+}
