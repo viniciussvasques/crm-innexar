@@ -8,7 +8,7 @@ import Button from '@/components/Button'
 import { motion } from 'framer-motion'
 import {
     Settings, CreditCard, Mail, Cog, Eye, EyeOff, Save,
-    Bot, Server, Link as LinkIcon, Plus, Trash2
+    Bot, Server, Link as LinkIcon, Plus, Trash2, Globe, BarChart
 } from 'lucide-react'
 
 // --- Types ---
@@ -53,6 +53,8 @@ const categoryConfig: Record<string, { label: string; icon: React.ComponentType<
     ai: { label: 'AI Providers', icon: Bot, description: 'Manage OpenAI, Anthropic, and other AI models', color: 'emerald' },
     servers: { label: 'Deploy Servers', icon: Server, description: 'Manage VPS and deployment targets', color: 'orange' },
     integrations: { label: 'Integrations', icon: LinkIcon, description: 'GitHub, Cloudflare, and external tools', color: 'indigo' },
+    dynadot: { label: 'Dynadot', icon: Globe, description: 'Domain registration API configuration', color: 'cyan' },
+    marketing: { label: 'Marketing', icon: BarChart, description: 'Tracking pixels & analytics', color: 'pink' },
 }
 
 const PROVIDER_MODELS: Record<string, string[]> = {
@@ -303,7 +305,9 @@ export default function SettingsPage() {
         const taskLabels: Record<string, string> = {
             coding: 'Code Generation (Site Builder)',
             chat: 'Customer Support (Chatbot)',
-            analysis: 'Data Analysis & Insights'
+            analysis: 'Data Analysis & Insights',
+            site_sitemap: 'Site Sitemap Generation',
+            site_home_copy: 'Home Page Copy Generation'
         }
 
         return (
@@ -478,7 +482,7 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-white mb-4">Task Routing</h3>
                 <p className="text-sm text-slate-400 mb-4">Assign specific models to different system tasks.</p>
                 <div className="grid gap-4">
-                    {['coding', 'chat', 'analysis'].map(task => (
+                    {['coding', 'chat', 'analysis', 'site_sitemap', 'site_home_copy'].map(task => (
                         <TaskRoutingRow key={task} task={task} />
                     ))}
                 </div>
@@ -645,7 +649,7 @@ export default function SettingsPage() {
                     github_organization: githubConfigs.organization || '',
                     github_default_branch: githubConfigs.default_branch || ''
                 }))
-            } catch (e) { 
+            } catch (e) {
                 console.error('[LOAD INTEGRATIONS] GitHub error:', e)
             }
 
@@ -756,7 +760,7 @@ export default function SettingsPage() {
             if (integrationForm.github_default_branch) {
                 await api.post('/api/config/integrations', { integration_type: 'github', key: 'default_branch', value: integrationForm.github_default_branch, is_secret: false })
             }
-            
+
             // Cloudflare Base
             if (integrationForm.cloudflare_token) {
                 await api.post('/api/config/integrations', { integration_type: 'cloudflare', key: 'api_token', value: integrationForm.cloudflare_token, is_secret: true })
@@ -764,12 +768,12 @@ export default function SettingsPage() {
             if (integrationForm.cloudflare_account) {
                 await api.post('/api/config/integrations', { integration_type: 'cloudflare', key: 'account_id', value: integrationForm.cloudflare_account, is_secret: false })
             }
-            
+
             // Cloudflare Pages
             if (integrationForm.cloudflare_pages_project_template) {
                 await api.post('/api/config/integrations', { integration_type: 'cloudflare_pages', key: 'project_template', value: integrationForm.cloudflare_pages_project_template, is_secret: false })
             }
-            
+
             // Cloudflare R2
             if (integrationForm.cloudflare_r2_bucket) {
                 await api.post('/api/config/integrations', { integration_type: 'cloudflare_r2', key: 'bucket_name', value: integrationForm.cloudflare_r2_bucket, is_secret: false })
@@ -783,12 +787,12 @@ export default function SettingsPage() {
             if (integrationForm.cloudflare_r2_endpoint) {
                 await api.post('/api/config/integrations', { integration_type: 'cloudflare_r2', key: 'endpoint_url', value: integrationForm.cloudflare_r2_endpoint, is_secret: false })
             }
-            
+
             // Cloudflare DNS
             if (integrationForm.cloudflare_dns_zone_id) {
                 await api.post('/api/config/integrations', { integration_type: 'cloudflare_dns', key: 'zone_id', value: integrationForm.cloudflare_dns_zone_id, is_secret: false })
             }
-            
+
             // AWS S3
             if (integrationForm.aws_s3_bucket) {
                 await api.post('/api/config/integrations', { integration_type: 'aws_s3', key: 'bucket_name', value: integrationForm.aws_s3_bucket, is_secret: false })
@@ -802,7 +806,7 @@ export default function SettingsPage() {
             if (integrationForm.aws_s3_region) {
                 await api.post('/api/config/integrations', { integration_type: 'aws_s3', key: 'region', value: integrationForm.aws_s3_region, is_secret: false })
             }
-            
+
             toast.success('Integrations updated')
         } catch (error) {
             toast.error('Failed to save integrations')
@@ -829,7 +833,7 @@ export default function SettingsPage() {
                 toast.error(`Unknown test type: ${type}`)
                 return
             }
-            
+
             const response = await api.post(endpoint)
             if (response.data.success) {
                 toast.success(response.data.message || `${type} connection test successful`)
@@ -1116,7 +1120,7 @@ export default function SettingsPage() {
                             <p className="text-sm text-slate-400 mt-1">{categoryConfig[activeTab].description}</p>
                         </div>
 
-                        {['general', 'stripe', 'email'].includes(activeTab) ? (
+                        {['general', 'stripe', 'email', 'dynadot', 'marketing'].includes(activeTab) ? (
                             renderStandardTab(activeTab)
                         ) : activeTab === 'ai' ? (
                             renderAiTab()

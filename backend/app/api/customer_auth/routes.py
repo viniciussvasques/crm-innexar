@@ -7,7 +7,8 @@ import secrets
 
 from app.core.database import get_db
 from app.models.site_customer import SiteCustomer
-from app.models.site_order import SiteOrder
+from app.models.site_order import SiteOrder, SiteOnboarding
+from app.models.site_deliverable import SiteDeliverable
 from app.services.email_service import email_service
 
 from .schemas import (
@@ -30,14 +31,6 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not customer or not verify_password(data.password, customer.password_hash):
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
-    
-    if not customer.email_verified:
-        from fastapi import HTTPException
-        # Return more helpful error with verification link
-        raise HTTPException(
-            status_code=403, 
-            detail="Email não verificado. Por favor, verifique seu email antes de fazer login. Se não recebeu o email, verifique sua caixa de spam ou solicite um novo email de verificação."
-        )
     
     customer.last_login = datetime.utcnow()
     await db.commit()
@@ -88,11 +81,15 @@ async def forgot_password(
         customer.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
         await db.commit()
         
+        # Get customer's preferred locale
+        locale = getattr(customer, 'preferred_locale', 'en') or 'en'
+        
         background_tasks.add_task(
             email_service.send_password_reset_email,
             customer_name=customer.email.split("@")[0],
             to_email=customer.email,
-            reset_token=reset_token
+            reset_token=reset_token,
+            locale=locale
         )
     
     return {"message": "If email exists, reset instructions have been sent"}
@@ -199,4 +196,69 @@ async def get_orders(
     return {
         "orders": [order_data],
         "customer": {"id": customer.id, "email": customer.email}
+    }
+
+
+@router.get("/me/orders/{order_id}/deliverables")
+async def get_order_deliverables_for_customer(
+    order_id: int,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Lista deliverables visíveis para o cliente de um determinado pedido.
+    Garante que o pedido pertence ao customer autenticado.
+    """
+    actual_token = get_token_from_request(authorization, token)
+    payload = decode_token(actual_token)
+    customer_id = int(payload["sub"])
+
+    customer = await db.get(SiteCustomer, customer_id)
+    if not customer:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Verificar se o pedido pertence ao cliente
+    # Primeiro verifica pelo order_id direto do customer
+    if customer.order_id and customer.order_id == order_id:
+        # Customer está diretamente associado ao pedido
+        pass
+    else:
+        # Verificar se o pedido existe e se o email do customer corresponde
+        order_result = await db.execute(
+            select(SiteOrder).where(SiteOrder.id == order_id)
+        )
+        order = order_result.scalar_one_or_none()
+        
+        if not order:
+            return {"deliverables": []}
+        
+        # Verificar se o email do customer corresponde ao email do pedido
+        if customer.email.lower() != order.customer_email.lower():
+            return {"deliverables": []}
+
+    result = await db.execute(
+        select(SiteDeliverable)
+        .where(
+            SiteDeliverable.order_id == order_id,
+            SiteDeliverable.is_visible_to_client == True,  # noqa: E712
+        )
+        .order_by(SiteDeliverable.created_at.desc())
+    )
+    deliverables = result.scalars().all()
+
+    return {
+        "deliverables": [
+            {
+                "id": d.id,
+                "type": d.type.value if hasattr(d.type, "value") else str(d.type),
+                "title": d.title,
+                "content": d.content,
+                "status": d.status.value if hasattr(d.status, "value") else str(d.status),
+                "metadata": d.metadata_json or {},
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in deliverables
+        ]
     }

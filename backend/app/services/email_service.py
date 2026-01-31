@@ -188,16 +188,23 @@ class EmailService:
 
     # ========== ORDER LIFECYCLE EMAILS ==========
 
+    def _normalize_locale(self, raw_locale: Optional[str]) -> str:
+        """Normalize locale codes to simple values like 'en', 'pt', 'es'."""
+        if not raw_locale:
+            return "en"
+        return str(raw_locale).split("-")[0]
+
     def send_payment_confirmation(self, order: dict) -> bool:
         """Send email when payment is received."""
         # Use stripe_session_id for the onboarding link since the frontend expects it
         session_id = order.get("stripe_session_id", "")
+        locale = self._normalize_locale(order.get("locale"))
         context = {
             "customer_name": order.get("customer_name", ""),
             "order_id": order.get("id"),
             "total_price": order.get("total_price", 399),
-            "onboarding_url": f"https://innexar.app/en/launch/onboarding?order_id={session_id}" if session_id else f"https://innexar.app/en/launch/onboarding?order_id={order.get('id')}",
-            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "onboarding_url": f"https://innexar.app/{locale}/launch/onboarding?order_id={session_id}" if session_id else f"https://innexar.app/{locale}/launch/onboarding?order_id={order.get('id')}",
+            "dashboard_url": f"https://innexar.app/{locale}/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(PAYMENT_CONFIRMATION_TEMPLATE, context)
@@ -209,12 +216,13 @@ class EmailService:
 
     def send_onboarding_complete(self, order: dict) -> bool:
         """Send email when onboarding is completed."""
+        locale = self._normalize_locale(order.get("locale"))
         business_name = order.get("onboarding", {}).get("business_name", order.get("customer_name", ""))
         context = {
             "customer_name": order.get("customer_name", ""),
             "business_name": business_name,
             "order_id": order.get("id"),
-            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/{locale}/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(ONBOARDING_COMPLETE_TEMPLATE, context)
@@ -226,12 +234,13 @@ class EmailService:
 
     def send_site_in_progress(self, order: dict) -> bool:
         """Send email when site enters 'building' status."""
+        locale = self._normalize_locale(order.get("locale"))
         business_name = order.get("onboarding", {}).get("business_name", order.get("customer_name", ""))
         context = {
             "customer_name": order.get("customer_name", ""),
             "business_name": business_name,
             "order_id": order.get("id"),
-            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/{locale}/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
 
         html = self.render_template(SITE_IN_PROGRESS_TEMPLATE, context)
@@ -243,13 +252,14 @@ class EmailService:
 
     def send_ready_for_review(self, order: dict, preview_url: str) -> bool:
         """Send email when site is ready for customer review."""
+        locale = self._normalize_locale(order.get("locale"))
         business_name = order.get("onboarding", {}).get("business_name", order.get("customer_name", ""))
         context = {
             "customer_name": order.get("customer_name", ""),
             "business_name": business_name,
             "order_id": order.get("id"),
             "preview_url": preview_url,
-            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/{locale}/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
             "revisions_remaining": order.get("revisions_included", 2) - order.get("revisions_used", 0),
         }
 
@@ -262,15 +272,16 @@ class EmailService:
 
     def send_site_delivered(self, order: dict, site_url: str) -> bool:
         """Send email when site is delivered."""
+        locale = self._normalize_locale(order.get("locale"))
         business_name = order.get("onboarding", {}).get("business_name", order.get("customer_name", ""))
         context = {
             "customer_name": order.get("customer_name", ""),
             "business_name": business_name,
             "order_id": order.get("id"),
             "site_url": site_url,
-            "dashboard_url": f"https://innexar.app/en/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
+            "dashboard_url": f"https://innexar.app/{locale}/launch/dashboard?order_id={order.get('id')}&email={order.get('customer_email', '')}",
         }
-
+        
         html = self.render_template(SITE_DELIVERED_TEMPLATE, context)
         return self.send_email(
             to_email=order.get("customer_email", ""),
@@ -278,34 +289,44 @@ class EmailService:
             html_content=html,
         )
 
-    def send_verification_email(self, customer_name: str, to_email: str, temp_password: str, verification_token: str) -> bool:
+    def send_verification_email(self, customer_name: str, to_email: str, temp_password: str, verification_token: str, locale: str = "en") -> bool:
         """Send email to verify customer account with temporary password."""
-        verification_url = f"https://innexar.app/en/launch/verify-email?token={verification_token}"
+        loc = self._normalize_locale(locale)
+        verification_url = f"https://innexar.app/{loc}/launch/verify-email?token={verification_token}"
         context = {
             "customer_name": customer_name,
             "temp_password": temp_password,
             "verification_url": verification_url
         }
         
-        html = self.render_template(VERIFICATION_TEMPLATE, context)
+        # Use locale-specific template
+        template = VERIFICATION_TEMPLATE_EN if loc == "en" else VERIFICATION_TEMPLATE_PT
+        subject = "🔐 Verify your Email - Innexar Portal" if loc == "en" else "🔐 Verifique seu Email - Portal Innexar"
+        
+        html = self.render_template(template, context)
         return self.send_email(
             to_email=to_email,
-            subject="🔐 Verifique seu Email - Portal Innexar",
+            subject=subject,
             html_content=html
         )
 
-    def send_password_reset_email(self, customer_name: str, to_email: str, reset_token: str) -> bool:
+    def send_password_reset_email(self, customer_name: str, to_email: str, reset_token: str, locale: str = "en") -> bool:
         """Send email to reset password."""
-        reset_url = f"https://innexar.app/en/launch/reset-password?token={reset_token}"
+        loc = self._normalize_locale(locale)
+        reset_url = f"https://innexar.app/{loc}/launch/reset-password?token={reset_token}"
         context = {
             "customer_name": customer_name,
             "reset_url": reset_url
         }
         
-        html = self.render_template(PASSWORD_RESET_TEMPLATE, context)
+        # Use locale-specific template
+        template = PASSWORD_RESET_TEMPLATE_EN if loc == "en" else PASSWORD_RESET_TEMPLATE_PT
+        subject = "🔑 Reset your Password - Innexar Portal" if loc == "en" else "🔑 Redefinir sua Senha - Portal Innexar"
+        
+        html = self.render_template(template, context)
         return self.send_email(
             to_email=to_email,
-            subject="🔑 Redefinir sua Senha - Portal Innexar",
+            subject=subject,
             html_content=html
         )
 
@@ -653,7 +674,7 @@ SITE_DELIVERED_TEMPLATE = """
 </html>
 """
 
-VERIFICATION_TEMPLATE = """
+VERIFICATION_TEMPLATE_PT = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -701,7 +722,7 @@ VERIFICATION_TEMPLATE = """
 </html>
 """
 
-PASSWORD_RESET_TEMPLATE = """
+PASSWORD_RESET_TEMPLATE_PT = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -740,6 +761,103 @@ PASSWORD_RESET_TEMPLATE = """
     </div>
     <div class="footer">
         <p>© 2026 Innexar. Construindo sites profissionais para negócios locais.</p>
+        <p><a href="https://innexar.app">innexar.app</a></p>
+    </div>
+</div>
+</body>
+</html>
+"""
+
+
+# ========== ENGLISH EMAIL TEMPLATES ==========
+
+VERIFICATION_TEMPLATE_EN = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    """ + BASE_STYLES + """
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Verify your Email ✉️</h1>
+        <p>Access your Innexar Customer Portal</p>
+    </div>
+    <div class="content">
+        <div style="text-align: center;">
+            <div class="icon-circle" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);">🔐</div>
+        </div>
+
+        <h2>Hello {{ customer_name }}!</h2>
+        <p>Your site is being developed! To track the progress, verify your email by clicking the button below.</p>
+
+        <div class="card">
+            <h3>🔑 Your Access Credentials</h3>
+            <p><strong>Email:</strong> The email you used to purchase</p>
+            <p><strong>Temporary Password:</strong> <code style="background: rgba(59,130,246,0.2); padding: 4px 12px; border-radius: 6px; font-family: monospace; color: #3b82f6;">{{ temp_password }}</code></p>
+            <p style="font-size: 14px; color: #64748b; margin-top: 15px;">⚠️ Save this password! You can change it after logging in.</p>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{ verification_url }}" class="button" style="font-size: 18px; padding: 18px 36px;">Verify Email & Access →</a>
+        </div>
+
+        <div class="divider"></div>
+
+        <p style="text-align: center; color: #64748b; font-size: 14px;">
+            If you didn't request this, please ignore this email.
+        </p>
+    </div>
+    <div class="footer">
+        <p>© 2026 Innexar. Building beautiful websites for local businesses.</p>
+        <p><a href="https://innexar.app">innexar.app</a></p>
+    </div>
+</div>
+</body>
+</html>
+"""
+
+PASSWORD_RESET_TEMPLATE_EN = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    """ + BASE_STYLES + """
+</head>
+<body>
+<div class="container">
+    <div class="header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+        <h1>Reset Password 🔑</h1>
+        <p>Password recovery request</p>
+    </div>
+    <div class="content">
+        <div style="text-align: center;">
+            <div class="icon-circle" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">🔒</div>
+        </div>
+
+        <h2>Hello {{ customer_name }}!</h2>
+        <p>We received a request to reset your Innexar Portal account password.</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{ reset_url }}" class="button" style="font-size: 18px; padding: 18px 36px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">Reset My Password →</a>
+        </div>
+
+        <div class="card">
+            <h3>⏰ Link valid for 1 hour</h3>
+            <p style="margin: 0;">For security, this link expires in 1 hour. If you didn't request a password reset, please ignore this email.</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <p style="text-align: center; color: #64748b; font-size: 14px;">
+            If you didn't request this, your account is secure. No action is needed.
+        </p>
+    </div>
+    <div class="footer">
+        <p>© 2026 Innexar. Building beautiful websites for local businesses.</p>
         <p><a href="https://innexar.app">innexar.app</a></p>
     </div>
 </div>

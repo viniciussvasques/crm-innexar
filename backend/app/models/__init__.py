@@ -13,6 +13,9 @@ from app.models.site_order import (
     SiteOrder, SiteOrderStatus, SiteOnboarding, SiteAddon, 
     SiteOrderAddon, SiteTemplate, SiteNiche, SiteTone, SiteCTA
 )
+from app.models.site_feedback import SiteFeedback
+from app.models.site_order_message import SiteOrderMessage
+from app.models.site_contract import SiteContract
 from app.models.system_config import SystemConfig, DEFAULT_CONFIGS
 from app.models.chat_session import ChatSession, ChatMessage
 from app.models.support_ticket import (
@@ -33,6 +36,7 @@ __all__ = [
     "GoalStatus", "GoalCategory",
     "SiteOrder", "SiteOrderStatus", "SiteOnboarding", "SiteAddon",
     "SiteOrderAddon", "SiteTemplate", "SiteNiche", "SiteTone", "SiteCTA",
+    "SiteOrderMessage", "SiteContract",
     "SystemConfig", "DEFAULT_CONFIGS",
     "ChatSession", "ChatMessage",
     "SupportTicket", "TicketMessage", "CustomerNotification",

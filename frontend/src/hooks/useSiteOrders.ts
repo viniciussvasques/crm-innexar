@@ -25,9 +25,21 @@ export const useSiteOrders = () => {
         }
     }, [])
 
-    const updateStatus = async (orderId: number, newStatus: string) => {
+    const updateStatus = async (
+        orderId: number,
+        newStatus: string,
+        extra?: Partial<{
+            admin_notes: string
+            expected_delivery_date: string
+            site_url: string
+            repository_url: string
+        }>
+    ) => {
         try {
-            await api.patch(`/api/site-orders/${orderId}/status`, { status: newStatus })
+            await api.patch(`/api/site-orders/${orderId}/status`, {
+                status: newStatus,
+                ...(extra || {})
+            })
             await loadOrders()
             toast.success('Status updated successfully')
         } catch (error) {
@@ -108,6 +120,45 @@ export const useSiteOrders = () => {
         }
     }
 
+    const generateBriefingDoc = async (orderId: number) => {
+        try {
+            const res = await api.post(`/api/site-orders/${orderId}/deliverables/briefing`)
+            toast.success('Briefing document generated successfully')
+            await loadOrders()
+            return res.data
+        } catch (error: any) {
+            console.error('Error generating briefing document:', error)
+            toast.error(error.response?.data?.error || 'Failed to generate briefing document')
+            return null
+        }
+    }
+
+    const generateSitemapAI = async (orderId: number) => {
+        try {
+            const res = await api.post(`/api/site-orders/${orderId}/ai/plan-sitemap`)
+            toast.success('AI sitemap generated successfully')
+            await loadOrders()
+            return res.data
+        } catch (error: any) {
+            console.error('Error generating sitemap with AI:', error)
+            toast.error(error.response?.data?.error || 'Failed to generate sitemap with AI')
+            return null
+        }
+    }
+
+    const generateHomeCopyAI = async (orderId: number) => {
+        try {
+            const res = await api.post(`/api/site-orders/${orderId}/ai/home-copy`)
+            toast.success('AI Home copy draft generated successfully')
+            await loadOrders()
+            return res.data
+        } catch (error: any) {
+            console.error('Error generating home copy with AI:', error)
+            toast.error(error.response?.data?.error || 'Failed to generate Home copy with AI')
+            return null
+        }
+    }
+
     return {
         orders,
         stats,
@@ -119,6 +170,9 @@ export const useSiteOrders = () => {
         checkEmptyGenerations,
         resetEmptyGenerations,
         resetGeneration,
+        generateBriefingDoc,
+        generateSitemapAI,
+        generateHomeCopyAI,
         setGenerating // Exporting setter if UI needs strict control
     }
 }

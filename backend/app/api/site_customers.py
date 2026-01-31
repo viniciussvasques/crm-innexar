@@ -336,17 +336,19 @@ async def resend_verification(
     customer.verification_sent_at = datetime.utcnow()
     
     # We don't change the password here by default, but we could generate a new temp one if they lost it
-    temp_password = "sua senha cadastrada" # Generic message as we don't store plain text
+    temp_password = "sua senha cadastrada"  # Generic message as we don't store plain text
     
     await db.commit()
     
     customer_name = customer.order.customer_name if customer.order else "Cliente"
+    locale = getattr(customer, "preferred_locale", "en")
     background_tasks.add_task(
         email_service.send_verification_email,
         customer_name=customer_name,
         to_email=customer.email,
         temp_password=temp_password,
-        verification_token=verification_token
+        verification_token=verification_token,
+        locale=locale,
     )
     
     return {"message": "Verification email resent"}
@@ -358,7 +360,8 @@ async def create_customer_account(
     db: AsyncSession,
     order_id: int,
     email: str,
-    password: Optional[str] = None
+    password: Optional[str] = None,
+    locale: Optional[str] = None,
 ) -> tuple[SiteCustomer, str]:
     """
     Create a customer account for an order.
@@ -375,6 +378,7 @@ async def create_customer_account(
     # Generate credentials if not provided
     actual_password = password or SiteCustomer.generate_temp_password()
     verification_token = SiteCustomer.generate_verification_token()
+    preferred_locale = (locale or "en").split("-")[0]
     
     customer = SiteCustomer(
         order_id=order_id,
@@ -382,7 +386,8 @@ async def create_customer_account(
         password_hash=hash_password(actual_password),
         email_verified=False,
         verification_token=verification_token,
-        verification_sent_at=datetime.utcnow()
+        verification_sent_at=datetime.utcnow(),
+        preferred_locale=preferred_locale,
     )
     
     db.add(customer)

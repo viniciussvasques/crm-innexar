@@ -370,7 +370,29 @@ async def get_lead_analysis(
     analysis = result.scalar_one_or_none()
     
     if not analysis:
-        raise HTTPException(status_code=404, detail="Análise não encontrada. Use POST para iniciar análise.")
+        # Auto-trigger analysis instead of returning 404
+        try:
+            import asyncio
+            asyncio.create_task(analyze_lead_background(contact_id))
+            print(f"[LeadAnalysis] Auto-triggered analysis for contact {contact_id}")
+        except Exception as e:
+            print(f"[LeadAnalysis] Failed to auto-trigger: {e}")
+        
+        # Return pending status
+        return LeadAnalysisResponse(
+            id=0,
+            contact_id=contact_id,
+            company_info=None,
+            market_analysis=None,
+            financial_insights=None,
+            recommendations=None,
+            risk_assessment=None,
+            opportunity_score=None,
+            analysis_metadata=None,
+            analysis_status="pending",
+            created_at=None,
+            analyzed_at=None
+        )
     
     return LeadAnalysisResponse(
         id=analysis.id,

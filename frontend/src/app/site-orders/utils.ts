@@ -3,7 +3,7 @@ import { SiteOrder, Step } from './types'
 export const getProcessSteps = (order: SiteOrder): Step[] => {
     const deliverables = order.deliverables || []
 
-    const steps: { id: string, title: string, description: string, requiredType: string, status: 'pending' }[] = [
+    const steps: { id: string, title: string, description: string, requiredType: string | string[], status: 'pending' }[] = [
         {
             id: 'strategy',
             title: 'Phase 1: Strategic Briefing',
@@ -15,7 +15,7 @@ export const getProcessSteps = (order: SiteOrder): Step[] => {
             id: 'architecture',
             title: 'Phase 2: Information Architecture',
             description: 'Designing Sitemap & UX Journeys.',
-            requiredType: 'sitemap',
+            requiredType: ['sitemap', 'content_plan'], // Include both sitemap and home copy
             status: 'pending'
         },
         {
@@ -28,7 +28,9 @@ export const getProcessSteps = (order: SiteOrder): Step[] => {
     ]
 
     return steps.map(step => {
-        const deliverable = deliverables.find(d => d.type === step.requiredType)
+        // Handle both single type and array of types
+        const requiredTypes = Array.isArray(step.requiredType) ? step.requiredType : [step.requiredType]
+        const deliverable = deliverables.find(d => requiredTypes.includes(d.type))
         let status: 'pending' | 'active' | 'completed' = 'pending'
         let date = undefined
 

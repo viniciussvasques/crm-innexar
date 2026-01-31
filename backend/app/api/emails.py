@@ -1,7 +1,7 @@
 """
 Email API endpoints for sending notifications.
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -40,6 +40,12 @@ def order_to_dict(order: SiteOrder) -> dict:
             "primary_city": order.onboarding.primary_city,
             "state": order.onboarding.state,
         }
+    
+    # Get locale from customer if available, otherwise default to 'en'
+    if order.customer and hasattr(order.customer, 'preferred_locale') and order.customer.preferred_locale:
+        result["locale"] = order.customer.preferred_locale
+    else:
+        result["locale"] = "en"
 
     return result
 
@@ -109,16 +115,27 @@ async def send_payment_confirmation_email(
 @router.post("/send-onboarding-complete/{order_id}")
 async def send_onboarding_complete_email(
     order_id: int,
+    locale: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint to send onboarding complete email."""
-    result = await db.execute(select(SiteOrder).where(SiteOrder.id == order_id))
+    from sqlalchemy.orm import selectinload
+    
+    result = await db.execute(
+        select(SiteOrder)
+        .options(selectinload(SiteOrder.customer), selectinload(SiteOrder.onboarding))
+        .where(SiteOrder.id == order_id)
+    )
     order = result.scalar_one_or_none()
     
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
     order_dict = order_to_dict(order)
+    # Override locale if provided in query param (from website), otherwise use customer's preferred locale
+    if locale:
+        order_dict["locale"] = locale.split("-")[0]  # Normalize to 'en', 'pt', 'es'
+    
     success = email_service.send_onboarding_complete(order_dict)
 
     return {"success": success}

@@ -1,34 +1,39 @@
 # Helena Knowledge Base - Innexar
 
-## PRODUTO EM DESTAQUE: SITES $399
+## ⚠️ REGRAS DE USO DO CONHECIMENTO (LEIA PRIMEIRO)
 
-Site profissional em 5 dias por apenas $399 (de $799 - 50% OFF!)
+**PROIBIDO** mencionar "Sites $399" quando o cliente pedir:
+- Aplicativos (apps móveis, tipo Uber, iFood, etc.)
+- Sistemas complexos (ERPs, SaaS, marketplaces)
+- Integrações ou automações
 
-**O que está incluso:**
-- 5 páginas responsivas (Home, Sobre, Serviços, Contato, etc.)
-- 100% customizado (não usamos templates)
-- Otimizado para SEO (ranquear no Google)
-- Carregamento rápido (menos de 2 segundos)
-- 30 dias de suporte pós-lançamento
-- Garantia de 30 dias ou dinheiro de volta
+**PERMITIDO** mencionar "Sites $399" APENAS quando:
+- Cliente pedir explicitamente um SITE simples
+- Cliente tiver orçamento baixo e escopo básico
+- Cliente mencionar landing page ou site institucional
 
-**Processo:**
-1. Pagamento seguro via Stripe
-2. Preenche formulário de onboarding (7 passos simples)
-3. Nossa equipe cria seu site
-4. Você revisa, dá feedback e lançamos!
+---
 
-**Add-ons opcionais:**
-- Logo profissional: $99
-- SEO Local avançado: $149
-- Página extra: $49
-- Widget WhatsApp: $29
-- Configuração Google Business: $79
+## 🎯 UPSELLING DE ADD-ONS (USE QUANDO APROPRIADO)
 
-**Links:**
-- PT: https://innexar.app/pt/launch
-- EN: https://innexar.app/en/launch
-- ES: https://innexar.app/es/launch
+Quando cliente demonstrar interesse em site, ofereça:
+- **Logo Profissional:** $99 - Design único para sua marca
+- **SEO Avançado:** $149 - Otimização completa para Google
+- **Hospedagem Premium:** $29/mês - Velocidade e uptime garantidos
+- **Manutenção Mensal:** $49/mês - Atualizações e suporte contínuo
+
+**Como oferecer:** Pergunte naturalmente após coletar informações básicas:
+"Você já tem um logo profissional? Podemos criar um por $99."
+
+---
+
+## Sites $399
+
+Site profissional em 5 dias por $399. Inclui 5 páginas, SEO, 30 dias de suporte.
+Link para checkout: https://innexar.app/pt/launch
+
+**Quando cliente qualificar para Sites $399, envie o link:**
+"Perfeito! Você pode iniciar seu pedido aqui: https://innexar.app/pt/launch"
 
 ---
 

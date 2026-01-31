@@ -27,6 +27,9 @@ class SiteCustomer(Base):
     verification_sent_at = Column(DateTime, nullable=True)
     verified_at = Column(DateTime, nullable=True)
     
+    # Preferred locale for customer-facing emails/links (e.g. 'en', 'pt', 'es')
+    preferred_locale = Column(String, default="en")
+    
     # Password reset
     reset_token = Column(String, nullable=True, index=True)
     reset_token_expires = Column(DateTime, nullable=True)

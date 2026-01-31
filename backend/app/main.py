@@ -9,7 +9,8 @@ from app.api import (
     external, commissions, quote_requests, notifications, ai, templates, 
     goals, ai_actions, ai_config, ai_chat, lead_analysis, webhooks, 
     ai_public, site_orders, system_config, public_config, emails, 
-    site_customers, site_generator_config, site_files, launch
+    site_customers, site_generator_config, site_files, launch, test_integrations,
+    public_domain, site_contracts
 )
 
 
@@ -89,6 +90,10 @@ app.include_router(site_customers.router, prefix="/api", tags=["site-customers"]
 app.include_router(site_generator_config.router, prefix="/api", tags=["site-generator-config"])
 app.include_router(site_files.router, prefix="/api", tags=["site-files"])
 app.include_router(launch.router, prefix="/api", tags=["launch"])
+app.include_router(test_integrations.router, prefix="/api", tags=["test-integrations"])
+from app.api import public_domain
+app.include_router(public_domain.router, prefix="/api", tags=["public-domain"])
+app.include_router(site_contracts.router, prefix="/api", tags=["site-contracts"])
 
 # New clean customer auth module
 from app.api.customer_auth import router as customer_auth_router
@@ -106,6 +111,14 @@ app.include_router(admin_tickets_router, prefix="/api/tickets", tags=["admin-tic
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    # Seed default system configs (Stripe hosting, Dynadot, etc.) if missing
+    try:
+        from app.api.system_config import seed_default_configs_if_missing
+        n = await seed_default_configs_if_missing()
+        if n:
+            print(f"[Startup] Seeded {n} new system config(s)")
+    except Exception as e:
+        print(f"[Startup] Config seed failed (non-fatal): {e}")
 
 @app.get("/")
 async def root():

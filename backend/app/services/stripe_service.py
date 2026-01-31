@@ -40,7 +40,7 @@ class StripeService:
             stripe.api_key = self.api_key
 
     async def create_checkout_session(self, order_data: dict, success_url: str, cancel_url: str):
-        """Create a Stripe Checkout Session."""
+        """Create a Stripe Checkout Session for the main website package (one‑time fee)."""
         await self._load_config()
         
         if not self.api_key:
@@ -93,4 +93,40 @@ class StripeService:
         except ValueError as e:
             raise e
         except stripe.error.SignatureVerificationError as e:
+            raise e
+
+    async def create_hosting_subscription(
+        self,
+        customer_id: str,
+        order_id: int,
+        price_id: str,
+        trial_days: int = 90,
+    ):
+        """
+        Create a hosting subscription that starts billing after a free trial.
+
+        - price_id: Stripe Price ID for $9.99/month hosting (configure in dashboard)
+        - trial_days: number of free days before first charge (default: 90 ≈ 3 months)
+        """
+        await self._load_config()
+
+        if not self.api_key:
+            raise ValueError("Stripe API Key not configured")
+
+        if not price_id:
+            raise ValueError("Stripe hosting price_id not configured")
+
+        try:
+            subscription = stripe.Subscription.create(
+                customer=customer_id,
+                items=[{"price": price_id}],
+                trial_period_days=trial_days,
+                metadata={
+                    "order_id": str(order_id),
+                    "type": "hosting_subscription",
+                },
+            )
+            return subscription
+        except stripe.error.StripeError as e:
+            print(f"Stripe Hosting Subscription Error: {e}")
             raise e

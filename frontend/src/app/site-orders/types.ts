@@ -5,7 +5,7 @@ export interface SiteOrder {
     customer_name: string
     customer_email: string
     customer_phone?: string
-    status: 'pending_payment' | 'paid' | 'onboarding_pending' | 'building' | 'generating' | 'review' | 'delivered' | 'cancelled'
+    status: 'pending_payment' | 'paid' | 'onboarding_pending' | 'briefing' | 'building' | 'generating' | 'preview' | 'review' | 'delivered' | 'cancelled'
     base_price: number
     total_price: number
     delivery_days: number
@@ -45,9 +45,28 @@ export interface SiteOnboarding {
     state: string
     services: string[]
     primary_service: string
-    tone: string
-    primary_cta: string
+    tone?: string
+    primary_cta?: string
+    // Optional extended briefing fields returned by backend
+    site_objective?: string
+    site_description?: string
+    selected_pages?: string[]
+    cta_text?: string
     primary_color?: string
+    secondary_color?: string
+    accent_color?: string
+    reference_sites?: string[]
+    design_notes?: string
+    business_hours?: Record<string, string>
+    social_facebook?: string
+    social_instagram?: string
+    social_linkedin?: string
+    social_youtube?: string
+    testimonials?: { name: string; text: string; role?: string }[]
+    google_reviews_link?: string
+    about_owner?: string
+    years_in_business?: number | string
+    desired_domain?: string
 }
 
 export interface SiteOrderAddon {

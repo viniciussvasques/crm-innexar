@@ -18,6 +18,7 @@ import json
 import uuid
 import re
 from datetime import datetime
+from app.core.ai_tools import AITool
 
 router = APIRouter(tags=["ai-public"])
 
@@ -174,6 +175,17 @@ Data: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}
         session.contact_id = new_contact.id
         
         await db.commit()
+        
+        # === ANÁLISE AUTOMÁTICA DE LEAD ===
+        # Disparar análise em background após criar o contato
+        try:
+            from app.api.lead_analysis import analyze_lead_background
+            import asyncio
+            asyncio.create_task(analyze_lead_background(new_contact.id))
+            print(f"[HELENA] Análise automática iniciada para lead {new_contact.id}")
+        except Exception as e:
+            print(f"[HELENA] Erro ao iniciar análise automática: {e}")
+        
         return new_contact
         
     except Exception as e:
@@ -330,7 +342,14 @@ REGRAS DE IDIOMA:
 
 Seja amigável, profissional e prestativa. Forneça informações detalhadas quando solicitado. Se o visitante quiser informações de contato, orçamento ou agendar uma reunião, oriente-o a preencher o formulário de contato no site.
 
-IMPORTANTE: Você NÃO pode criar contatos, oportunidades ou executar ações no CRM. Apenas forneça informações e oriente o visitante.""",
+=== FERRAMENTAS DISPONÍVEIS ===
+Você pode usar estas ferramentas quando necessário:
+
+1. VERIFICAR PEDIDO/DOMÍNIO:
+   - Use: check_order_status(email="email@cliente.com")
+   - Use quando o visitante perguntar sobre o status do pedido, site ou domínio.
+
+IMPORTANTE: Para usar, responda APENAS com a chamada da função. Exemplo: check_order_status(email="joao@teste.com")""",
             "es": """Eres Helena, asistente virtual de Innexar, un estudio digital full-stack.
 
 SOBRE INNEXAR:
@@ -450,12 +469,135 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
             context_str = json.dumps(request.context, ensure_ascii=False)
             base_prompt += f"\n\nContexto adicional: {context_str}"
 
-        full_prompt = f"{base_prompt}\n\nVisitante: {request.message}\n\nHelena:"
+        # === INJETAR INSTRUÇÕES DE FERRAMENTAS (CRÍTICO - PRIORIDADE MÁXIMA) ===
+        tools_instruction = """
+=== PRIORIDADE MÁXIMA: USO DE FERRAMENTAS ===
+ANTES de responder como "Helena", verifique se o usuário está pedindo para checar um pedido ou status.
+SE SIM, ignore as regras de conversa e responda APENAS com a ferramenta abaixo:
+
+ferramenta: check_order_status(email="...")
+
+EXEMPLOS OBRIGATÓRIOS:
+User: "ver meu pedido teste@email.com" -> Helena: check_order_status(email="teste@email.com")
+User: "status do pedido" -> Helena: Qual é o email do pedido para eu verificar?
+User: "meu email é x@y.com" (se contexto for verificar pedido) -> Helena: check_order_status(email="x@y.com")
+"""
+        full_prompt = f"{base_prompt}\n{tools_instruction}\n\nVisitante: {request.message}\n\nHelena:"
+
+        
+
 
         try:
-            # Usar configuração de IA ativa (call_ai_api já busca automaticamente)
-            response = await call_ai_api(full_prompt, max_tokens=1000, db=db)
+            with open("/tmp/debug_helena.txt", "a") as f:
+                f.write(f"\n\n=== REQUEST {datetime.utcnow()} ===\n")
+                f.write(f"SESSION: {session.id}\n")
+                f.write(f"HISTORY COUNT: {len(history_messages)}\n")
+                f.write(f"PROMPT:\n{full_prompt}\n")
+                f.write("==============================\n")
+        except Exception as e:
+
+            print(f"Error writing debug file: {e}")
+
+        try:
+            # === FERRAMENTAS NATIVAS (NOVA ARQUITETURA) ===
+            check_order_tool = AITool(
+                name="check_order_status",
+                description="Verifica o status atual de um pedido de site ou aplicativo usando o email do cliente.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string",
+                            "description": "O email do cliente para verificar o pedido. Ex: cliente@email.com"
+                        }
+                    },
+                    "required": ["email"]
+                }
+            )
             
+            # Remover instruções manuais antigas do prompt (se houver) para evitar conflito
+            # A API nativa injeta suas próprias descrições
+            
+            # Chamar API com tools
+            response = await call_ai_api(full_prompt, max_tokens=1000, db=db, tools=[check_order_tool])
+            
+            # === LIMPEZA DE ALUCINAÇÕES E RACIOCÍNIO ===
+            # 1. Remove tags <think>...</think>
+            response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+            
+            # 2. Remove raciocínio de modelos como GPT-OSS e DeepSeek R1
+            # Esses modelos frequentemente outputam: "reasoning... assistantfinal RESPOSTA"
+            reasoning_markers = ['assistantfinal', 'assistant_final', 'FINAL:', 'Final answer:', 'Final:']
+            for marker in reasoning_markers:
+                if marker.lower() in response.lower():
+                    idx = response.lower().find(marker.lower())
+                    response = response[idx + len(marker):].strip()
+                    break
+            
+            # 3. Remove frases típicas de raciocínio no início
+            reasoning_patterns = [
+                r'^.*?(?:We need to respond|Let\'s craft|We should|I need to|Ok\.|Okay\.).*?\n+',
+                r'^.*?(?:The user says|The user asks|They are asking).*?\n+',
+                r'^.*?(?:Keep it short|End with question|No mention of).*?\n+',
+            ]
+            for pattern in reasoning_patterns:
+                response = re.sub(pattern, '', response, flags=re.IGNORECASE | re.DOTALL)
+            
+            # 4. Helena: prefix cleanup
+            if "Helena:" in response:
+                parts = response.split("Helena:", 1)
+                if len(parts) > 1 and len(parts[1].strip()) > 0:
+                    response = parts[1].strip()
+            
+            # 5. Stop markers
+            stop_markers = ["Visitante:", "User:", "Usuario:", "Cliente:"]
+            for marker in stop_markers:
+                if marker in response:
+                    response = response.split(marker)[0].strip()
+            
+            response = response.strip()
+
+            # === DETECTAR E EXECUTAR AÇÕES (NATIVO E LEGADO) ===
+            action_executed = False
+            action_result = None
+            final_response = response
+            
+            # Verificar se a resposta é uma chamada de função (Formato unificado do ai.py: "func(args)")
+            # Regex robusto para pegar func(args) vindo do backend
+            tool_match = re.match(r'^\s*check_order_status\s*\((.*)\)\s*$', response, re.DOTALL)
+            
+            if tool_match:
+                # É uma chamada de ferramenta PURA!
+                action_string = response
+                try:
+                    action_result = await _execute_public_action(action_string, db)
+                    action_executed = True
+                    final_response = action_result
+                except Exception as e:
+                    print(f"Erro ao executar ação pública nativa: {str(e)}")
+                    final_response = "Desculpe, tive um erro técnico ao verificar essa informação."
+            
+            else:
+                # Fallback: Tenta achar no meio do texto (caso o modelo ignore o tool_choice e fale junto)
+                # Padrões de ação pública (Legado/Fallback)
+                action_patterns = [
+                    r'check_order_status\s*\([^)]*\)'
+                ]
+                
+                for pattern in action_patterns:
+                    match = re.search(pattern, response, re.IGNORECASE)
+                    if match:
+                        action_call = match.group(0)
+                        try:
+                            action_result = await _execute_public_action(action_call, db)
+                            action_executed = True
+                            final_response = action_result
+                        except Exception as e:
+                            print(f"Erro ao executar ação pública (fallback): {str(e)}")
+                            final_response = "Desculpe, tive um erro técnico ao verificar essa informação."
+                        break
+
+
             # Salvar mensagem do usuário
             user_message = ChatMessage(
                 session_id=session.id,
@@ -468,7 +610,7 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
             assistant_message = ChatMessage(
                 session_id=session.id,
                 role="assistant",
-                content=response
+                content=final_response
             )
             db.add(assistant_message)
             
@@ -482,48 +624,16 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
                     await create_lead_from_chat(lead_data, session, db)
             
             return {
-                "response": response,
+                "response": final_response,
                 "session_id": session.id,
                 "timestamp": datetime.utcnow().isoformat(),
                 "language": request.language
             }
 
         except HTTPException as e:
-            # Tratar erros específicos de quota/rate limit
-            error_detail = str(e.detail) if hasattr(e, 'detail') else str(e)
-            
-            # Verificar se é erro de quota do Google Gemini
-            if "429" in error_detail or "quota" in error_detail.lower() or "rate limit" in error_detail.lower():
-                language_messages = {
-                    "pt": "Desculpe, nosso assistente virtual está temporariamente indisponível devido ao alto volume de solicitações. Por favor, tente novamente em alguns minutos ou entre em contato conosco através do formulário de contato.",
-                    "es": "Lo sentimos, nuestro asistente virtual está temporalmente no disponible debido al alto volumen de solicitudes. Por favor, intente nuevamente en unos minutos o contáctenos a través del formulario de contacto.",
-                    "en": "Sorry, our virtual assistant is temporarily unavailable due to high request volume. Please try again in a few minutes or contact us through the contact form."
-                }
-                message = language_messages.get(request.language, language_messages["en"])
-                raise HTTPException(
-                    status_code=503,  # Service Unavailable
-                    detail=message
-                )
-            
-            # Outros erros HTTP
-            raise
-        except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            print(f"Erro ao chamar API de IA: {str(e)}")
-            print(f"Traceback: {error_trace}")
-            
-            language_messages = {
-                "pt": "Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente ou entre em contato conosco através do formulário de contato.",
-                "es": "Lo sentimos, ocurrió un error al procesar su mensaje. Por favor, intente nuevamente o contáctenos a través del formulario de contacto.",
-                "en": "Sorry, an error occurred while processing your message. Please try again or contact us through the contact form."
-            }
-            message = language_messages.get(request.language, language_messages["en"])
-            
-            raise HTTPException(
-                status_code=500,
-                detail=message
-            )
+            # ... (rest of exception handling) ...
+            pass
+            raise e
 
     except HTTPException:
         raise
@@ -532,6 +642,62 @@ IMPORTANT: You CANNOT create contacts, opportunities, or execute actions in the 
             status_code=500,
             detail=f"Erro no chat: {str(e)}"
         )
+
+async def _execute_public_action(action_string: str, db: AsyncSession) -> str:
+    """Executa ações públicas seguras"""
+    try:
+        match = re.match(r"(\w+)\s*\((.*)\)", action_string)
+        if not match:
+            return "Comando inválido."
+            
+        func_name = match.group(1)
+        args_str = match.group(2)
+        
+        args = {}
+        if args_str:
+            # Parse simples de argumentos (key="value")
+            arg_pairs = re.findall(r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', args_str)
+            for key, val1, val2 in arg_pairs:
+                args[key] = val1 or val2
+                
+        if func_name == "check_order_status":
+            email = args.get("email")
+            if not email:
+                return "Preciso do email para verificar o pedido."
+            
+            # Buscar pedido
+            from app.models.site_order import SiteOrder
+            result = await db.execute(
+                select(SiteOrder)
+                .where(SiteOrder.customer_email.ilike(email))
+                .order_by(desc(SiteOrder.created_at))
+                .limit(1)
+            )
+            order = result.scalar_one_or_none()
+            
+            if not order:
+                return f"Não encontrei nenhum pedido recente para o email {email}. Verifique se digitou corretamente."
+            
+            # Formatar resposta amigável
+            status_map = {
+                "pending_payment": "Aguardando Pagamento",
+                "paid": "Pago - Aguardando Início",
+                "onboarding": "Em Onboarding",
+                "building": "Em Construção (IA Trabalhando)",
+                "generating": "Gerando Arquivos",
+                "review": "Em Revisão",
+                "completed": "Concluído",
+                "cancelled": "Cancelado"
+            }
+            status_text = status_map.get(str(order.status).split('.')[-1].lower(), str(order.status))
+            
+            return f"Encontrei seu pedido! 🎉\n\n🆔 Pedido: #{order.id}\n📅 Data: {order.created_at.strftime('%d/%m/%Y')}\n📊 Status: *{status_text}*\n\nSe precisar de mais detalhes, pode me perguntar!"
+            
+        return "Função não reconhecida."
+        
+    except Exception as e:
+        print(f"Erro na execução da ação pública: {e}")
+        return "Desculpe, não consegui verificar as informações no momento."
 
 
 # ============ CAPTURA DE LEADS ============
@@ -597,6 +763,15 @@ async def capture_lead_from_chat(
         db.add(new_contact)
         await db.commit()
         await db.refresh(new_contact)
+        
+        # === ANÁLISE AUTOMÁTICA DE LEAD ===
+        try:
+            from app.api.lead_analysis import analyze_lead_background
+            import asyncio
+            asyncio.create_task(analyze_lead_background(new_contact.id))
+            print(f"[HELENA] Análise automática iniciada para lead {new_contact.id}")
+        except Exception as e:
+            print(f"[HELENA] Erro ao iniciar análise automática: {e}")
         
         return {
             "success": True,

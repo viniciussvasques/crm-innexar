@@ -135,19 +135,54 @@ AVAILABLE_MODELS = {
         {"name": "command-r-plus", "display": "Command R Plus"}
     ],
     "cloudflare": [
-        {"name": "@cf/meta/llama-3.1-8b-instruct", "display": "Llama 3.1 8B Instruct (Recomendado)"},
+        # === RECOMMENDED FOR CHAT ===
+        {"name": "@cf/openai/gpt-oss-120b", "display": "GPT-OSS 120B (OpenAI - MELHOR!)"},
+        {"name": "@cf/qwen/qwen3-30b-a3b-fp8", "display": "Qwen3 30B (Function Calling)"},
+        {"name": "@cf/qwen/qwq-32b", "display": "QwQ 32B (Reasoning)"},
+        {"name": "@cf/deepseek/deepseek-r1-distill-qwen-32b", "display": "DeepSeek R1 32B (Reasoning)"},
+        {"name": "@cf/mistral/mistral-small-3.1-24b-instruct", "display": "Mistral Small 3.1 24B"},
+        
+        # === LLAMA FAMILY ===
+        {"name": "@cf/meta/llama-4-scout-17b-16e-instruct", "display": "Llama 4 Scout 17B (NOVO!)"},
+        {"name": "@cf/meta/llama-4-maverick-17b-128e-instruct-fp8", "display": "Llama 4 Maverick 17B (NOVO!)"},
+        {"name": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "display": "Llama 3.3 70B Instruct"},
+        {"name": "@cf/meta/llama-3.1-70b-instruct", "display": "Llama 3.1 70B Instruct"},
+        {"name": "@cf/meta/llama-3.1-8b-instruct", "display": "Llama 3.1 8B Instruct"},
         {"name": "@cf/meta/llama-3.2-3b-instruct", "display": "Llama 3.2 3B Instruct (Rápido)"},
         {"name": "@cf/meta/llama-3.2-1b-instruct", "display": "Llama 3.2 1B Instruct (Ultra Rápido)"},
-        {"name": "@cf/qwen/qwen2.5-coder-32b-instruct", "display": "Qwen 2.5 Coder 32B Instruct"},
-        {"name": "@cf/qwen/qwq-32b", "display": "QwQ 32B (Reasoning)"},
-        {"name": "@cf/qwen/qwen3-30b-a3b-fp8", "display": "Qwen3 30B (Function calling)"},
-        {"name": "@cf/mistral/mistral-small-3.1-24b-instruct", "display": "Mistral Small 3.1 24B Instruct"},
-        {"name": "@cf/mistral/mistral-7b-instruct-v0.2", "display": "Mistral 7B Instruct v0.2"},
+        {"name": "@cf/meta/llama-3.2-11b-vision-instruct", "display": "Llama 3.2 11B Vision"},
+        
+        # === QWEN FAMILY ===
+        {"name": "@cf/qwen/qwen2.5-72b-instruct", "display": "Qwen 2.5 72B Instruct"},
+        {"name": "@cf/qwen/qwen2.5-coder-32b-instruct", "display": "Qwen 2.5 Coder 32B"},
+        {"name": "@cf/qwen/qwen2.5-14b-instruct-awq", "display": "Qwen 2.5 14B AWQ"},
+        {"name": "@cf/qwen/qwen2.5-7b-instruct-awq", "display": "Qwen 2.5 7B AWQ"},
+        
+        # === DEEPSEEK FAMILY ===
+        {"name": "@cf/deepseek/deepseek-v3-0324", "display": "DeepSeek V3 (Latest)"},
+        {"name": "@cf/deepseek/deepseek-coder-v2-instruct", "display": "DeepSeek Coder V2"},
+        {"name": "@hf/thebloke/deepseek-coder-6.7b-instruct-awq", "display": "DeepSeek Coder 6.7B"},
+        
+        # === MISTRAL FAMILY ===
+        {"name": "@cf/mistral/mistral-7b-instruct-v0.2", "display": "Mistral 7B v0.2"},
+        {"name": "@cf/mistral/mistral-7b-instruct-v0.2-lora", "display": "Mistral 7B v0.2 LoRA"},
+        {"name": "@hf/mistral/mistral-7b-instruct-v0.2", "display": "Mistral 7B v0.2 (HF)"},
+        
+        # === GOOGLE GEMMA ===
+        {"name": "@cf/google/gemma-3-27b-it", "display": "Gemma 3 27B IT"},
         {"name": "@cf/google/gemma-3-12b-it", "display": "Gemma 3 12B IT"},
         {"name": "@cf/google/gemma-7b-it-lora", "display": "Gemma 7B IT"},
+        
+        # === OTHER MODELS ===
+        {"name": "@cf/openai/gpt-oss-20b", "display": "GPT-OSS 20B (OpenAI)"},
         {"name": "@cf/ibm/granite-4.0-h-micro", "display": "IBM Granite 4.0 Micro"},
+        {"name": "@cf/phi/phi-4", "display": "Phi-4 (Microsoft)"},
+        {"name": "@hf/thebloke/zephyr-7b-beta-awq", "display": "Zephyr 7B Beta"},
+        {"name": "@hf/thebloke/openhermes-2.5-mistral-7b-awq", "display": "OpenHermes 2.5 7B"},
+        {"name": "@cf/tinyllama/tinyllama-1.1b-chat-v1.0", "display": "TinyLlama 1.1B (Ultra Leve)"},
+        
+        # === SAFETY ===
         {"name": "@cf/meta/llama-guard-3-8b", "display": "Llama Guard 3 8B (Safety)"},
-        {"name": "@hf/thebloke/deepseek-coder-6.7b-instruct-awq", "display": "DeepSeek Coder 6.7B"}
     ]
 }
 

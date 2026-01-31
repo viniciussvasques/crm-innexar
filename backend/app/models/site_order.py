@@ -12,9 +12,11 @@ class SiteOrderStatus(str, enum.Enum):
     PENDING_PAYMENT = "pending_payment"  # Aguardando pagamento
     PAID = "paid"  # Pago, aguardando onboarding
     ONBOARDING_PENDING = "onboarding_pending"  # Aguardando cliente preencher
-    BUILDING = "building"  # Em construção
-    GENERATING = "generating"  # Em geração por IA
-    REVIEW = "review"  # Em revisão pelo cliente
+    BRIEFING = "briefing"  # Onboarding completo, aguardando equipe revisar
+    BUILDING = "building"  # Em construção (manual)
+    GENERATING = "generating"  # Em geração por IA (automático)
+    PREVIEW = "preview"  # Preview disponível para cliente revisar
+    REVIEW = "review"  # Cliente solicitou ajustes, em revisão
     DELIVERED = "delivered"  # Entregue
     CANCELLED = "cancelled"  # Cancelado/Reembolsado
 
@@ -65,7 +67,16 @@ class SiteOrder(Base):
     customer_phone = Column(String, nullable=True)
     
     # Pedido
-    status = Column(SQLEnum(SiteOrderStatus), default=SiteOrderStatus.PENDING_PAYMENT, index=True)
+    # Map enum using its values (lowercase strings) to match PostgreSQL enum labels
+    status = Column(
+        SQLEnum(
+            SiteOrderStatus,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="siteorderstatus",
+        ),
+        default=SiteOrderStatus.PENDING_PAYMENT,
+        index=True,
+    )
     base_price = Column(Float, default=399.0)
     total_price = Column(Float, nullable=False)
     currency = Column(String, default="USD")
@@ -98,6 +109,9 @@ class SiteOrder(Base):
     addons = relationship("SiteOrderAddon", back_populates="order")
     customer = relationship("SiteCustomer", back_populates="order", uselist=False)
     deliverables = relationship("SiteDeliverable", back_populates="order")
+    feedbacks = relationship("SiteFeedback", back_populates="order")
+    messages = relationship("SiteOrderMessage", back_populates="order", order_by="SiteOrderMessage.created_at.desc()")
+    contract = relationship("SiteContract", back_populates="order", uselist=False, cascade="all, delete-orphan")
 
 
 class SiteOnboarding(Base):
@@ -113,6 +127,14 @@ class SiteOnboarding(Base):
     business_phone = Column(String, nullable=False)
     has_whatsapp = Column(Boolean, default=False)
     business_address = Column(String, nullable=True)
+    # Domain configuration
+    has_existing_domain = Column(Boolean, default=False)  # True if client already has a domain
+    existing_domain = Column(String, nullable=True)  # Domain client already owns
+    domain_to_purchase = Column(String, nullable=True)  # Domain client wants to purchase
+    domain_purchased = Column(Boolean, default=False)  # True if domain was purchased through our system
+    domain_purchase_status = Column(String, nullable=True)  # pending, purchased, failed
+    # Legacy field - keep for backward compatibility
+    desired_domain = Column(String, nullable=True)
     
     # ============ STEP 2: Niche & Location ============
     niche = Column(SQLEnum(SiteNiche), nullable=False)

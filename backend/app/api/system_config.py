@@ -7,7 +7,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
-from app.core.database import get_db
+from app.core.database import get_db, AsyncSessionLocal
 from app.models.user import User
 from app.models.system_config import SystemConfig, DEFAULT_CONFIGS
 from app.api.dependencies import get_current_user, require_admin
@@ -205,6 +205,33 @@ async def seed_default_configs(
     return {"message": f"Seeded {len(created)} new configs", "keys": created}
 
 
+async def seed_default_configs_if_missing() -> int:
+    """Seed any DEFAULT_CONFIGS that don't exist yet. Call at startup (no auth). Returns count created."""
+    created = 0
+    async with AsyncSessionLocal() as db:
+        try:
+            for config_data in DEFAULT_CONFIGS:
+                result = await db.execute(
+                    select(SystemConfig).where(SystemConfig.key == config_data["key"])
+                )
+                if result.scalar_one_or_none() is None:
+                    config = SystemConfig(
+                        key=config_data["key"],
+                        value=config_data.get("value"),
+                        value_type=config_data.get("value_type", "string"),
+                        category=config_data["category"],
+                        description=config_data.get("description"),
+                        is_secret=config_data.get("is_secret", False)
+                    )
+                    db.add(config)
+                    created += 1
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return created
+
+
 # ============== Public getter (for internal use) ==============
 
 async def get_config_value(db: AsyncSession, key: str) -> Optional[Any]:
@@ -264,6 +291,9 @@ async def get_public_configs(
         "stripe_webhook_secret",
         "site_base_price",
         "site_delivery_days",
+        "google_analytics_id",
+        "google_ads_id",
+        "meta_pixel_id",
     ]
     
     result = await db.execute(

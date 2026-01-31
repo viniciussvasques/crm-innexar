@@ -77,6 +77,7 @@ class AIService:
         1. Checks routing for task_type
         2. Selects provider
         3. Calls provider
+        Returns dict with 'content'/'text' and 'ai_info' containing provider/model details
         """
         routing = await self.get_routing_for_task(task_type)
         if not routing:
@@ -84,12 +85,34 @@ class AIService:
 
         # Try primary
         try:
-            return await self._call_provider(routing.primary_config_id, prompt, system_instruction, routing.temperature)
+            result = await self._call_provider(routing.primary_config_id, prompt, system_instruction, routing.temperature)
+            # Add AI info to result
+            config = await self._get_config(routing.primary_config_id)
+            if config:
+                result["ai_info"] = {
+                    "provider": config.provider,
+                    "model": config.model_name,
+                    "config_id": config.id,
+                    "config_name": config.name or f"{config.provider} - {config.model_name}",
+                    "used_fallback": False
+                }
+            return result
         except Exception as e:
             logger.error(f"Primary provider failed for {task_type}: {e}")
             if routing.fallback_config_id:
                 logger.info(f"Retrying with fallback provider for {task_type}")
-                return await self._call_provider(routing.fallback_config_id, prompt, system_instruction, routing.temperature)
+                result = await self._call_provider(routing.fallback_config_id, prompt, system_instruction, routing.temperature)
+                # Add AI info with fallback flag
+                config = await self._get_config(routing.fallback_config_id)
+                if config:
+                    result["ai_info"] = {
+                        "provider": config.provider,
+                        "model": config.model_name,
+                        "config_id": config.id,
+                        "config_name": config.name or f"{config.provider} - {config.model_name}",
+                        "used_fallback": True
+                    }
+                return result
             raise e
 
     async def _call_provider(self, config_id: int, prompt: str, system: str, temperature: float) -> Dict[str, Any]:

@@ -4,13 +4,14 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/components/Toast'
 import Modal from '@/components/Modal'
+import OrderCommunication from '@/components/OrderCommunication'
 import Button from '@/components/Button'
 import LogViewer from '@/components/SiteGeneration/LogViewer'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     Package, DollarSign, Clock, CheckCircle, AlertCircle,
     LayoutGrid, LayoutList, MapPin, Mail, Calendar, ExternalLink, Globe,
-    Wand2, FileCode, Presentation, RefreshCw
+    Wand2, FileCode, Presentation, RefreshCw, Eye, FileText
 } from 'lucide-react'
 import { Timeline } from '@/components/SiteGeneration/Timeline'
 import { useSiteOrders } from '@/hooks/useSiteOrders'
@@ -21,8 +22,10 @@ const statusConfig: Record<string, StatusConfig> = {
     pending_payment: { label: 'Pending Payment', color: 'text-slate-300', bgColor: 'bg-slate-500/20', borderColor: 'border-slate-500/30', icon: AlertCircle },
     paid: { label: 'Paid', color: 'text-amber-300', bgColor: 'bg-amber-500/20', borderColor: 'border-amber-500/30', icon: DollarSign },
     onboarding_pending: { label: 'Onboarding', color: 'text-orange-300', bgColor: 'bg-orange-500/20', borderColor: 'border-orange-500/30', icon: Clock },
+    briefing: { label: 'Briefing', color: 'text-cyan-300', bgColor: 'bg-cyan-500/20', borderColor: 'border-cyan-500/30', icon: FileText },
     building: { label: 'Building', color: 'text-blue-300', bgColor: 'bg-blue-500/20', borderColor: 'border-blue-500/30', icon: Package },
     generating: { label: 'Generating AI', color: 'text-blue-300', bgColor: 'bg-blue-500/20', borderColor: 'border-blue-500/30', icon: Wand2 },
+    preview: { label: 'Preview', color: 'text-purple-300', bgColor: 'bg-purple-500/20', borderColor: 'border-purple-500/30', icon: Eye },
     review: { label: 'In Review', color: 'text-purple-300', bgColor: 'bg-purple-500/20', borderColor: 'border-purple-500/30', icon: Clock },
     delivered: { label: 'Delivered', color: 'text-emerald-300', bgColor: 'bg-emerald-500/20', borderColor: 'border-emerald-500/30', icon: CheckCircle },
     cancelled: { label: 'Cancelled', color: 'text-red-300', bgColor: 'bg-red-500/20', borderColor: 'border-red-500/30', icon: AlertCircle },
@@ -30,7 +33,22 @@ const statusConfig: Record<string, StatusConfig> = {
 
 export default function SiteOrdersPage() {
     const router = useRouter()
-    const { orders, stats, loading, generating, loadOrders, updateStatus, generateSite, checkEmptyGenerations, resetEmptyGenerations, resetGeneration, setGenerating } = useSiteOrders()
+    const {
+        orders,
+        stats,
+        loading,
+        generating,
+        loadOrders,
+        updateStatus,
+        generateSite,
+        checkEmptyGenerations,
+        resetEmptyGenerations,
+        resetGeneration,
+        generateBriefingDoc,
+        generateSitemapAI,
+        generateHomeCopyAI,
+        setGenerating,
+    } = useSiteOrders()
 
     // UI State
     const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -39,6 +57,7 @@ export default function SiteOrdersPage() {
     const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban')
     const [selectedArtifact, setSelectedArtifact] = useState<SiteDeliverable | null>(null)
     const [viewLogs, setViewLogs] = useState(false)
+    const [activeTab, setActiveTab] = useState<'details' | 'communication'>('details')
 
     useEffect(() => {
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
@@ -88,7 +107,15 @@ export default function SiteOrdersPage() {
     }, [orders, statusFilter])
 
     const ordersByStatus = useMemo(() => {
-        const grouped: Record<string, SiteOrder[]> = { paid: [], building: [], generating: [], review: [], delivered: [] }
+        const grouped: Record<string, SiteOrder[]> = {
+            paid: [],
+            briefing: [],
+            building: [],
+            generating: [],
+            preview: [],
+            review: [],
+            delivered: []
+        }
         orders.forEach(order => { if (grouped[order.status]) grouped[order.status].push(order) })
         return grouped
     }, [orders])
@@ -236,7 +263,7 @@ export default function SiteOrdersPage() {
                 {viewMode === 'kanban' && (
                     <div className="overflow-x-auto pb-4">
                         <div className="flex gap-4 min-w-max">
-                            {['paid', 'building', 'generating', 'review', 'delivered'].map(status => {
+                            {['paid', 'briefing', 'building', 'generating', 'preview', 'review', 'delivered'].map(status => {
                                 const config = statusConfig[status]
                                 const statusOrders = ordersByStatus[status] || []
                                 return (
@@ -363,216 +390,428 @@ export default function SiteOrdersPage() {
             </div>
 
             {/* Order Details Modal */}
-            <Modal isOpen={showDetails} onClose={() => { setShowDetails(false); setSelectedOrder(null); setViewLogs(false) }} title="Order Details" size="xl">
+            <Modal isOpen={showDetails} onClose={() => { setShowDetails(false); setSelectedOrder(null); setViewLogs(false); setActiveTab('details') }} title="Order Details" size="xl">
                 {selectedOrder && (
                     <div className="space-y-6">
-
-                        {/* Realtime Logs Section */}
-                        {(viewLogs || selectedOrder.status === 'generating' || selectedOrder.status === 'review') && (
-                            <div className="mb-6">
-                                <div className="flex items-center justify-between mb-2">
-                                    <h4 className="text-white font-semibold">Generation Progress</h4>
-                                    <button
-                                        onClick={() => setViewLogs(!viewLogs)}
-                                        className="text-xs text-blue-400 hover:text-blue-300"
-                                    >
-                                        {viewLogs ? 'Hide Logs' : 'Show Logs'}
-                                    </button>
-                                </div>
-                                {viewLogs && (
-                                    <LogViewer
-                                        orderId={selectedOrder.id}
-                                        onComplete={() => {
-                                            setGenerating(false)
-                                            loadOrders() // Refresh status to Review
-                                        }}
-                                    />
-                                )}
-                            </div>
-                        )}
-
-                        {/* Interactive Timeline */}
-                        {(selectedOrder.status === 'building' || selectedOrder.status === 'generating' || selectedOrder.status === 'review' || selectedOrder.status === 'delivered') && (
-                            <div className="bg-white/5 rounded-xl border border-white/10 p-6 mb-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h4 className="text-white font-semibold flex items-center">
-                                        <Presentation className="w-5 h-5 mr-2 text-purple-400" />
-                                        Creation Journey
-                                    </h4>
-                                </div>
-                                <Timeline
-                                    steps={getProcessSteps(selectedOrder)}
-                                    currentStepId="strategy"
-                                    onViewArtifact={(stepId) => {
-                                        // Find artifact for this step
-                                        const artifact = selectedOrder.deliverables?.find(d => {
-                                            if (stepId === 'strategy') return d.type === 'briefing';
-                                            if (stepId === 'architecture') return d.type === 'sitemap';
-                                            return false;
-                                        });
-
-                                        if (artifact) {
-                                            setSelectedArtifact(artifact);
-                                        } else {
-                                            toast.error('Detalhes ainda não disponíveis para esta etapa');
-                                        }
-                                    }}
-                                />
-                            </div>
-                        )}
-
-                        {/* Status and Actions */}
-                        <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
-                            <div>
-                                <span className="text-sm text-slate-400">Current Status</span>
-                                <div className="mt-1">
-                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedOrder.status]?.bgColor} ${statusConfig[selectedOrder.status]?.color}`}>
-                                        {statusConfig[selectedOrder.status]?.label}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex gap-2">
-                                {selectedOrder.status === 'generating' && (
-                                    <Button
-                                        onClick={() => handleResetSingleGeneration(selectedOrder.id)}
-                                        className="bg-red-600 hover:bg-red-700"
-                                    >
-                                        <AlertCircle className="w-4 h-4 mr-2" />
-                                        Reset Generation
-                                    </Button>
-                                )}
-                                {(selectedOrder.status === 'paid' || selectedOrder.status === 'building' || selectedOrder.status === 'generating' || selectedOrder.status === 'review') && selectedOrder.onboarding && (
-                                    <Button
-                                        onClick={() => handleGenerateSite(selectedOrder.id)}
-                                        isLoading={generating || selectedOrder.status === 'generating'}
-                                        className="bg-purple-600 hover:bg-purple-700"
-                                        disabled={generating || selectedOrder.status === 'generating'}
-                                    >
-                                        <Wand2 className="w-4 h-4 mr-2" />
-                                        {selectedOrder.status === 'generating' ? 'Generating...' : 'Generate Site with AI'}
-                                    </Button>
-                                )}
-
-                                {(selectedOrder.status === 'review' || selectedOrder.status === 'delivered') && selectedOrder.site_url && (
-                                    <Button
-                                        variant="secondary"
-                                        onClick={() => window.open(`/projects/${selectedOrder.id}/ide`, '_blank')}
-                                        className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
-                                    >
-                                        <FileCode className="w-4 h-4 mr-2" />
-                                        Open IDE
-                                    </Button>
-                                )}
-
-                                {selectedOrder.status === 'paid' && (
-                                    <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'building')}>Start Manually</Button>
-                                )}
-                                {selectedOrder.status === 'building' && (
-                                    <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'review')}>Send for Review</Button>
-                                )}
-                                {selectedOrder.status === 'review' && (
-                                    <Button onClick={() => updateStatus(selectedOrder.id, 'delivered')}>Mark Delivered</Button>
-                                )}
-                            </div>
+                        {/* Tabs */}
+                        <div className="flex gap-2 border-b border-white/10 -mx-6 px-6">
+                            <button
+                                onClick={() => setActiveTab('details')}
+                                className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'details'
+                                        ? 'text-blue-400 border-b-2 border-blue-400'
+                                        : 'text-slate-400 hover:text-white'
+                                    }`}
+                            >
+                                Details
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('communication')}
+                                className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'communication'
+                                        ? 'text-blue-400 border-b-2 border-blue-400'
+                                        : 'text-slate-400 hover:text-white'
+                                    }`}
+                            >
+                                Communication
+                            </button>
                         </div>
 
-                        {/* Customer Info */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-white/5 rounded-lg p-4">
-                                <p className="text-slate-400 text-sm mb-1">Customer Name</p>
-                                <p className="text-white font-medium">{selectedOrder.customer_name}</p>
-                            </div>
-                            <div className="bg-white/5 rounded-lg p-4">
-                                <p className="text-slate-400 text-sm mb-1">Email</p>
-                                <p className="text-white">{selectedOrder.customer_email}</p>
-                            </div>
-                            <div className="bg-white/5 rounded-lg p-4">
-                                <p className="text-slate-400 text-sm mb-1">Phone</p>
-                                <p className="text-white">{selectedOrder.customer_phone || '-'}</p>
-                            </div>
-                            <div className="bg-white/5 rounded-lg p-4">
-                                <p className="text-slate-400 text-sm mb-1">Total Paid</p>
-                                <p className="text-emerald-400 font-semibold">${selectedOrder.total_price}</p>
-                            </div>
-                        </div>
+                        {activeTab === 'details' && (
+                            <>
+                                {/* Interactive Timeline */}
+                                {(selectedOrder.status === 'building' || selectedOrder.status === 'review' || selectedOrder.status === 'delivered') && (
+                                    <div className="bg-white/5 rounded-xl border border-white/10 p-6 mb-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h4 className="text-white font-semibold flex items-center">
+                                                <Presentation className="w-5 h-5 mr-2 text-purple-400" />
+                                                Creation Journey
+                                            </h4>
+                                        </div>
+                                        <Timeline
+                                            steps={getProcessSteps(selectedOrder)}
+                                            currentStepId="strategy"
+                                            onViewArtifact={(stepId) => {
+                                                // Find artifact for this step
+                                                let artifact = null;
 
-                        {/* Onboarding Data */}
-                        {selectedOrder.onboarding && (
-                            <div>
-                                <h4 className="font-semibold text-white mb-3">Business Details</h4>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white/5 rounded-lg p-4">
-                                        <p className="text-slate-400 text-sm mb-1">Business Name</p>
-                                        <p className="text-white">{selectedOrder.onboarding.business_name}</p>
+                                                console.log('Viewing artifact for step:', stepId);
+                                                console.log('Available deliverables:', selectedOrder.deliverables);
+
+                                                if (stepId === 'strategy') {
+                                                    artifact = selectedOrder.deliverables?.find(d => d.type === 'briefing');
+                                                } else if (stepId === 'architecture') {
+                                                    // Prefer content_plan (home copy) if available, otherwise sitemap
+                                                    const contentPlan = selectedOrder.deliverables?.find(d => d.type === 'content_plan');
+                                                    const sitemap = selectedOrder.deliverables?.find(d => d.type === 'sitemap');
+                                                    artifact = contentPlan || sitemap;
+                                                    console.log('Found content_plan:', contentPlan);
+                                                    console.log('Found sitemap:', sitemap);
+                                                } else if (stepId === 'code') {
+                                                    artifact = selectedOrder.deliverables?.find(d => d.type === 'code');
+                                                }
+
+                                                if (artifact) {
+                                                    console.log('Opening artifact:', artifact);
+                                                    setSelectedArtifact(artifact);
+                                                } else {
+                                                    console.log('No artifact found for step:', stepId);
+                                                    toast.error('Detalhes ainda não disponíveis para esta etapa');
+                                                }
+                                            }}
+                                        />
                                     </div>
-                                    <div className="bg-white/5 rounded-lg p-4">
-                                        <p className="text-slate-400 text-sm mb-1">Niche</p>
-                                        <p className="text-white capitalize">{selectedOrder.onboarding.niche}</p>
+                                )}
+
+                                {/* Status and Actions */}
+                                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className="text-sm text-slate-400">Current Status</span>
+                                            <div className="mt-1">
+                                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedOrder.status]?.bgColor} ${statusConfig[selectedOrder.status]?.color}`}>
+                                                    {statusConfig[selectedOrder.status]?.label}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="bg-white/5 rounded-lg p-4">
-                                        <p className="text-slate-400 text-sm mb-1">Location</p>
-                                        <p className="text-white">{selectedOrder.onboarding.primary_city}, {selectedOrder.onboarding.state}</p>
-                                    </div>
-                                    <div className="bg-white/5 rounded-lg p-4">
-                                        <p className="text-slate-400 text-sm mb-1">Primary Service</p>
-                                        <p className="text-white">{selectedOrder.onboarding.primary_service}</p>
-                                    </div>
-                                </div>
-                                <div className="mt-4">
-                                    <p className="text-slate-400 text-sm mb-2">Services</p>
                                     <div className="flex flex-wrap gap-2">
-                                        {selectedOrder.onboarding.services.map((service, i) => (
-                                            <span key={i} className="px-2 py-1 bg-white/10 text-white text-sm rounded">{service}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                                {/* Artifact Viewer Modal */}
-                                <Modal
-                                    isOpen={!!selectedArtifact}
-                                    onClose={() => setSelectedArtifact(null)}
-                                    title={selectedArtifact?.title || 'Detalhes do Artefato'}
-                                    size="xl"
-                                >
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between text-sm text-slate-400 border-b border-white/10 pb-4">
-                                            <span className="flex items-center">
-                                                <Clock className="w-4 h-4 mr-2" />
-                                                Gerado em: {selectedArtifact?.created_at ? new Date(selectedArtifact.created_at).toLocaleString('pt-BR') : '-'}
-                                            </span>
-                                            <span className={`px-2 py-1 rounded text-xs font-medium ${selectedArtifact?.status === 'approved' ? 'bg-green-500/20 text-green-400' :
-                                                selectedArtifact?.status === 'ready' ? 'bg-blue-500/20 text-blue-400' :
-                                                    'bg-gray-500/20 text-gray-400'
-                                                }`}>
-                                                {selectedArtifact?.status?.toUpperCase()}
-                                            </span>
-                                        </div>
-
-                                        <div className="bg-slate-950 rounded-lg p-4 font-mono text-sm text-slate-300 overflow-auto max-h-[60vh] whitespace-pre-wrap">
-                                            {selectedArtifact?.content || 'Conteúdo não disponível.'}
-                                        </div>
-
-                                        <div className="flex justify-end pt-4 border-t border-white/10">
+                                        {(selectedOrder.status === 'review' || selectedOrder.status === 'delivered') && selectedOrder.site_url && (
                                             <Button
                                                 variant="secondary"
-                                                onClick={() => setSelectedArtifact(null)}
+                                                onClick={() => window.open(`/projects/${selectedOrder.id}/ide`, '_blank')}
+                                                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
                                             >
-                                                Fechar
+                                                <FileCode className="w-4 h-4 mr-2" />
+                                                Open IDE
                                             </Button>
-                                        </div>
+                                        )}
+
+                                        {selectedOrder.status === 'paid' && (
+                                            <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'building')}>
+                                                Start Manually
+                                            </Button>
+                                        )}
+                                        {selectedOrder.status === 'briefing' && (
+                                            <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'building')}>
+                                                Start Development
+                                            </Button>
+                                        )}
+                                        {selectedOrder.status === 'building' && (
+                                            <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'preview')}>
+                                                Send Preview to Client
+                                            </Button>
+                                        )}
+                                        {selectedOrder.status === 'preview' && (
+                                            <>
+                                                <Button variant="secondary" onClick={() => updateStatus(selectedOrder.id, 'review')}>
+                                                    Move to Review
+                                                </Button>
+                                                <Button onClick={() => updateStatus(selectedOrder.id, 'delivered')}>
+                                                    Mark Delivered
+                                                </Button>
+                                            </>
+                                        )}
+                                        {selectedOrder.status === 'review' && (
+                                            <Button onClick={() => updateStatus(selectedOrder.id, 'delivered')}>
+                                                Mark Delivered
+                                            </Button>
+                                        )}
                                     </div>
-                                </Modal>
-                            </div>
+                                </div>
+
+                                {/* Customer & Project Info (editable controls) */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="bg-white/5 rounded-lg p-4">
+                                        <p className="text-slate-400 text-sm mb-1">Customer Name</p>
+                                        <p className="text-white font-medium">{selectedOrder.customer_name}</p>
+                                    </div>
+                                    <div className="bg-white/5 rounded-lg p-4">
+                                        <p className="text-slate-400 text-sm mb-1">Email</p>
+                                        <p className="text-white">{selectedOrder.customer_email}</p>
+                                    </div>
+                                    <div className="bg-white/5 rounded-lg p-4">
+                                        <p className="text-slate-400 text-sm mb-1">Phone</p>
+                                        <p className="text-white">{selectedOrder.customer_phone || '-'}</p>
+                                    </div>
+                                    <div className="bg-white/5 rounded-lg p-4">
+                                        <p className="text-slate-400 text-sm mb-1">Total Paid</p>
+                                        <p className="text-emerald-400 font-semibold">${selectedOrder.total_price}</p>
+                                    </div>
+                                    <div className="bg-white/5 rounded-lg p-4">
+                                        <p className="text-slate-400 text-sm mb-1">Expected Delivery</p>
+                                        <input
+                                            type="date"
+                                            defaultValue={selectedOrder.expected_delivery_date ? new Date(selectedOrder.expected_delivery_date).toISOString().slice(0, 10) : ''}
+                                            className="mt-1 w-full bg-slate-900/60 border border-white/10 rounded px-2 py-1 text-sm text-white"
+                                            onChange={(e) => {
+                                                const value = e.target.value
+                                                if (!value) return
+                                                // Send only date part; backend recebe como datetime
+                                                updateStatus(selectedOrder.id, selectedOrder.status, {
+                                                    expected_delivery_date: new Date(value + 'T00:00:00').toISOString(),
+                                                })
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="bg-white/5 rounded-lg p-4 lg:col-span-2">
+                                        <p className="text-slate-400 text-sm mb-1">Admin Notes</p>
+                                        <textarea
+                                            defaultValue={selectedOrder.admin_notes || ''}
+                                            className="mt-1 w-full bg-slate-900/60 border border-white/10 rounded px-2 py-1 text-sm text-white min-h-[60px]"
+                                            onBlur={(e) => {
+                                                const value = e.target.value
+                                                updateStatus(selectedOrder.id, selectedOrder.status, { admin_notes: value })
+                                            }}
+                                            placeholder="Internal notes about scope, priorities, revisions, etc."
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Onboarding / Briefing Data */}
+                                {selectedOrder.onboarding && (
+                                    <div>
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-3 gap-3">
+                                            <h4 className="font-semibold text-white">Briefing Overview</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => generateBriefingDoc(selectedOrder.id)}
+                                                >
+                                                    <FileText className="w-4 h-4 mr-2" />
+                                                    Generate Briefing Doc
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => generateSitemapAI(selectedOrder.id)}
+                                                >
+                                                    <Presentation className="w-4 h-4 mr-2" />
+                                                    AI Sitemap
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => generateHomeCopyAI(selectedOrder.id)}
+                                                >
+                                                    <Wand2 className="w-4 h-4 mr-2" />
+                                                    AI Home Copy
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        {/* Business Identity */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Business Name</p>
+                                                <p className="text-white">{selectedOrder.onboarding.business_name}</p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Niche</p>
+                                                <p className="text-white capitalize">{selectedOrder.onboarding.niche}</p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Location</p>
+                                                <p className="text-white">{selectedOrder.onboarding.primary_city}, {selectedOrder.onboarding.state}</p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Primary Service</p>
+                                                <p className="text-white">{selectedOrder.onboarding.primary_service}</p>
+                                            </div>
+                                            {selectedOrder.onboarding.desired_domain && (
+                                                <div className="bg-white/5 rounded-lg p-4">
+                                                    <p className="text-slate-400 text-sm mb-1">Desired Domain</p>
+                                                    <p className="text-white">{selectedOrder.onboarding.desired_domain}</p>
+                                                </div>
+                                            )}
+                                            {selectedOrder.onboarding.site_objective && (
+                                                <div className="bg-white/5 rounded-lg p-4 md:col-span-2">
+                                                    <p className="text-slate-400 text-sm mb-1">Site Objective</p>
+                                                    <p className="text-white capitalize">{selectedOrder.onboarding.site_objective}</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Pages & Content */}
+                                        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                            <div className="lg:col-span-2 bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-2">Services</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {selectedOrder.onboarding.services.map((service, i) => (
+                                                        <span key={i} className="px-2 py-1 bg-white/10 text-white text-sm rounded">{service}</span>
+                                                    ))}
+                                                </div>
+                                                {selectedOrder.onboarding.site_description && (
+                                                    <div className="mt-4">
+                                                        <p className="text-slate-400 text-sm mb-1">Business / About Copy</p>
+                                                        <p className="text-slate-200 text-sm whitespace-pre-wrap">
+                                                            {selectedOrder.onboarding.site_description}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-2">Pages Included</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {(selectedOrder.onboarding.selected_pages || []).map((page, i) => (
+                                                        <span key={i} className="px-2 py-1 bg-white/10 text-white text-xs rounded capitalize">
+                                                            {page.replace('_', ' ')}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Design & Brand */}
+                                        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Tone of Voice</p>
+                                                <p className="text-white capitalize">{selectedOrder.onboarding.tone || 'Not specified'}</p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Primary CTA</p>
+                                                <p className="text-white capitalize">{selectedOrder.onboarding.primary_cta || 'Not specified'}</p>
+                                                {selectedOrder.onboarding.cta_text && (
+                                                    <p className="text-slate-300 text-xs mt-1">“{selectedOrder.onboarding.cta_text}”</p>
+                                                )}
+                                            </div>
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-1">Brand Colors</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    {selectedOrder.onboarding.primary_color && (
+                                                        <span className="inline-flex items-center gap-2 text-xs text-slate-300">
+                                                            <span className="w-4 h-4 rounded-full border border-white/20" style={{ backgroundColor: selectedOrder.onboarding.primary_color }} />
+                                                            {selectedOrder.onboarding.primary_color}
+                                                        </span>
+                                                    )}
+                                                    {selectedOrder.onboarding.secondary_color && (
+                                                        <span className="inline-flex items-center gap-2 text-xs text-slate-300">
+                                                            <span className="w-4 h-4 rounded-full border border-white/20" style={{ backgroundColor: selectedOrder.onboarding.secondary_color }} />
+                                                            {selectedOrder.onboarding.secondary_color}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* References & Social */}
+                                        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                            {(selectedOrder.onboarding.reference_sites && selectedOrder.onboarding.reference_sites.length > 0) && (
+                                                <div className="bg-white/5 rounded-lg p-4">
+                                                    <p className="text-slate-400 text-sm mb-2">Reference Sites</p>
+                                                    <ul className="space-y-1 text-sm text-blue-300">
+                                                        {selectedOrder.onboarding.reference_sites.map((url, i) => (
+                                                            <li key={i} className="truncate">
+                                                                <a href={url} target="_blank" rel="noreferrer" className="hover:underline">
+                                                                    {url}
+                                                                </a>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <p className="text-slate-400 text-sm mb-2">Social & Reviews</p>
+                                                <div className="space-y-1 text-sm text-slate-200">
+                                                    {selectedOrder.onboarding.social_facebook && <p>Facebook: {selectedOrder.onboarding.social_facebook}</p>}
+                                                    {selectedOrder.onboarding.social_instagram && <p>Instagram: {selectedOrder.onboarding.social_instagram}</p>}
+                                                    {selectedOrder.onboarding.social_linkedin && <p>LinkedIn: {selectedOrder.onboarding.social_linkedin}</p>}
+                                                    {selectedOrder.onboarding.social_youtube && <p>YouTube: {selectedOrder.onboarding.social_youtube}</p>}
+                                                    {selectedOrder.onboarding.google_reviews_link && (
+                                                        <p>Google Reviews: <a href={selectedOrder.onboarding.google_reviews_link} target="_blank" rel="noreferrer" className="text-blue-300 hover:underline">View</a></p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Testimonials & About */}
+                                        {(selectedOrder.onboarding.testimonials && selectedOrder.onboarding.testimonials.length > 0) || selectedOrder.onboarding.about_owner ? (
+                                            <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                {selectedOrder.onboarding.about_owner && (
+                                                    <div className="bg-white/5 rounded-lg p-4">
+                                                        <p className="text-slate-400 text-sm mb-1">About the Owner / Company Story</p>
+                                                        <p className="text-slate-200 text-sm whitespace-pre-wrap">
+                                                            {selectedOrder.onboarding.about_owner}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {selectedOrder.onboarding.testimonials && selectedOrder.onboarding.testimonials.length > 0 && (
+                                                    <div className="bg-white/5 rounded-lg p-4">
+                                                        <p className="text-slate-400 text-sm mb-2">Testimonials</p>
+                                                        <div className="space-y-2 max-h-56 overflow-y-auto">
+                                                            {selectedOrder.onboarding.testimonials.map((t, i) => (
+                                                                <div key={i} className="border border-white/10 rounded-md p-2">
+                                                                    <p className="text-slate-200 text-sm">“{t.text}”</p>
+                                                                    <p className="text-slate-400 text-xs mt-1">
+                                                                        {t.name}{t.role ? ` • ${t.role}` : ''}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : null}
+                                        {/* Artifact Viewer Modal */}
+                                        <Modal
+                                            isOpen={!!selectedArtifact}
+                                            onClose={() => setSelectedArtifact(null)}
+                                            title={selectedArtifact?.title || 'Detalhes do Artefato'}
+                                            size="xl"
+                                        >
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between text-sm text-slate-400 border-b border-white/10 pb-4">
+                                                    <span className="flex items-center">
+                                                        <Clock className="w-4 h-4 mr-2" />
+                                                        Gerado em: {selectedArtifact?.created_at ? new Date(selectedArtifact.created_at).toLocaleString('pt-BR') : '-'}
+                                                    </span>
+                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${selectedArtifact?.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                                                        selectedArtifact?.status === 'ready' ? 'bg-blue-500/20 text-blue-400' :
+                                                            'bg-gray-500/20 text-gray-400'
+                                                        }`}>
+                                                        {selectedArtifact?.status?.toUpperCase()}
+                                                    </span>
+                                                </div>
+
+                                                <div className="bg-slate-950 rounded-lg p-4 text-sm text-slate-300 overflow-auto max-h-[60vh]">
+                                                    {selectedArtifact?.content ? (
+                                                        <div className="prose prose-invert prose-sm max-w-none">
+                                                            <pre className="whitespace-pre-wrap font-sans text-slate-300 bg-transparent p-0 border-0">
+                                                                {selectedArtifact.content}
+                                                            </pre>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-slate-500">Conteúdo não disponível.</p>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex justify-end pt-4 border-t border-white/10">
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={() => setSelectedArtifact(null)}
+                                                    >
+                                                        Fechar
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </Modal>
+                                    </div>
+                                )}
+
+                                {/* Site URL */}
+                                {selectedOrder.site_url && (
+                                    <div className="bg-white/5 rounded-lg p-4">
+                                        <p className="text-slate-400 text-sm mb-1">Site URL</p>
+                                        <a href={selectedOrder.site_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline flex items-center gap-2">
+                                            <Globe className="w-4 h-4" />
+                                            {selectedOrder.site_url}
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                    </div>
+                                )}
+                            </>
                         )}
 
-                        {/* Site URL */}
-                        {selectedOrder.site_url && (
-                            <div className="bg-white/5 rounded-lg p-4">
-                                <p className="text-slate-400 text-sm mb-1">Site URL</p>
-                                <a href={selectedOrder.site_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline flex items-center gap-2">
-                                    <Globe className="w-4 h-4" />
-                                    {selectedOrder.site_url}
-                                    <ExternalLink className="w-4 h-4" />
-                                </a>
+                        {activeTab === 'communication' && (
+                            <div className="min-h-[500px]">
+                                <OrderCommunication orderId={selectedOrder.id} />
                             </div>
                         )}
                     </div>

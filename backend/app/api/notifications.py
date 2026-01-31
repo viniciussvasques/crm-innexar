@@ -152,3 +152,31 @@ async def create_notification_for_user(
     await db.refresh(notification)
 
     return notification
+
+
+async def notify_all_admins(
+    db: AsyncSession,
+    title: str,
+    message: str,
+    notification_type: str = "info",
+    related_entity_type: str = None,
+    related_entity_id: int = None
+):
+    """Cria notificação para todos os usuários admin (para nova ordem, nova mensagem do cliente, etc.)."""
+    from app.models.user import User
+    result = await db.execute(
+        select(User.id).where(User.role == "admin", User.is_active == True)
+    )
+    admin_ids = [row[0] for row in result.all()]
+    for uid in admin_ids:
+        n = Notification(
+            title=title,
+            message=message,
+            type=notification_type,
+            recipient_id=uid,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id
+        )
+        db.add(n)
+    await db.commit()
+    return len(admin_ids)
